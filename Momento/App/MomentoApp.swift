@@ -13,6 +13,6 @@ struct MomentoApp: App {
 
 struct RootView: View {
     var body: some View {
-        CaptureScreen()
+        TrayEditor()
     }
 }
