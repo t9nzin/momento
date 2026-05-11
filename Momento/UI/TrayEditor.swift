@@ -40,23 +40,65 @@ struct TrayEditor: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer(minLength: 12)
+                libraryHeader
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
 
-                trayContent
-                    .background(
-                        RoundedRectangle(cornerRadius: trayCorner, style: .continuous)
-                            .fill(Color.white)
-                            .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 6)
-                    )
-                    .padding(.horizontal, 10)
-                    .offset(y: 18)
+                Spacer(minLength: 0)
+
+                HStack(alignment: .top, spacing: 18) {
+                    FolderCard()
+                        .frame(width: 160)
+                    FolderCard()
+                        .frame(width: 160)
+                    FolderCard()
+                        .frame(width: 160)
+                }
+                .fixedSize()
+                .padding(.bottom, 12)
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            trayContent
+                .background(
+                    RoundedRectangle(cornerRadius: trayCorner, style: .continuous)
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 6)
+                )
+                .padding(.horizontal, 10)
+                .padding(.bottom, 0)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .offset(y: 16)
         }
         .onAppear {
             if activeCardID == nil {
                 activeCardID = cards.first(where: { $0.imageName == "cardKassian" })?.id ?? cards.first?.id
             }
         }
+    }
+
+    private var libraryHeader: some View {
+        HStack {
+            headerCircleButton(systemName: "plus") { }
+            Spacer()
+            Text("Library")
+                .font(.system(size: 17, weight: .semibold))
+            Spacer()
+            headerCircleButton(systemName: "ellipsis") { }
+        }
+    }
+
+    private func headerCircleButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.75))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.white))
+                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Tray
