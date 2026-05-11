@@ -10,31 +10,24 @@ struct TrayEditor: View {
     struct CardItem: Identifiable, Equatable {
         let id = UUID()
         let imageName: String
-        var offset: CGSize = .zero
-        var rotation: Angle = .degrees(0)
+    }
+
+    private struct SlotPose {
+        let offset: CGSize
+        let rotation: Angle
     }
 
     @State private var mode: Mode = .custom
 
     @State private var cards: [CardItem] = [
-        CardItem(imageName: "cardNoProblem",
-                 offset: CGSize(width: -118, height: 10),
-                 rotation: .degrees(-4)),
-        CardItem(imageName: "cardLandscape",
-                 offset: CGSize(width: 86, height: 14),
-                 rotation: .degrees(1)),
-        CardItem(imageName: "cardText",
-                 offset: CGSize(width: 118, height: 2),
-                 rotation: .degrees(5)),
-        CardItem(imageName: "cardKassian",
-                 offset: CGSize(width: 0, height: -4),
-                 rotation: .degrees(-8))
+        CardItem(imageName: "cardNoProblem"),
+        CardItem(imageName: "cardKassian"),
+        CardItem(imageName: "cardLandscape"),
+        CardItem(imageName: "cardText")
     ]
 
     @State private var activeCardID: UUID?
-    @State private var dragOffset: CGSize = .zero
-    @State private var dragStartOffset: CGSize = .zero
-    @State private var isDragging = false
+    @State private var swipeOffset: CGFloat = 0
     @State private var titleText = "cargoworld"
     @State private var subtitleText = ""
 
@@ -61,7 +54,7 @@ struct TrayEditor: View {
         }
         .onAppear {
             if activeCardID == nil {
-                activeCardID = cards.last?.id
+                activeCardID = cards.first(where: { $0.imageName == "cardKassian" })?.id ?? cards.first?.id
             }
         }
     }
@@ -144,37 +137,73 @@ struct TrayEditor: View {
             dottedBackground
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            ForEach(orderedCards) { card in
+            ForEach(cards) { card in
                 cardView(for: card)
             }
         }
         .frame(height: canvasHeight)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 5)
+                .onChanged { value in
+                    swipeOffset = value.translation.width
+                }
+                .onEnded { value in
+                    let threshold: CGFloat = 40
+                    withAnimation(.snappy(duration: 0.28)) {
+                        if value.translation.width < -threshold {
+                            cycleActive(forward: true)
+                        } else if value.translation.width > threshold {
+                            cycleActive(forward: false)
+                        }
+                        swipeOffset = 0
+                    }
+                }
+        )
     }
 
-    private var orderedCards: [CardItem] {
+    private func slotPose(for cardID: UUID) -> SlotPose {
         guard let activeID = activeCardID,
-              let activeIdx = cards.firstIndex(where: { $0.id == activeID }) else {
-            return cards
+              let activeIdx = cards.firstIndex(where: { $0.id == activeID }),
+              let cardIdx = cards.firstIndex(where: { $0.id == cardID }) else {
+            return SlotPose(offset: .zero, rotation: .degrees(0))
         }
-        var rearranged = cards
-        let active = rearranged.remove(at: activeIdx)
-        rearranged.append(active)
-        return rearranged
+        let slotSpacing: CGFloat = 95
+        switch cardIdx - activeIdx {
+        case 0:
+            return SlotPose(offset: CGSize(width: 0, height: -4), rotation: .degrees(-8))
+        case 1:
+            return SlotPose(offset: CGSize(width: slotSpacing, height: 14), rotation: .degrees(2))
+        case 2:
+            return SlotPose(offset: CGSize(width: slotSpacing * 2, height: 6), rotation: .degrees(5))
+        case -1:
+            return SlotPose(offset: CGSize(width: -slotSpacing, height: 10), rotation: .degrees(-4))
+        case -2:
+            return SlotPose(offset: CGSize(width: -slotSpacing * 2, height: 18), rotation: .degrees(-2))
+        default:
+            return SlotPose(offset: .zero, rotation: .degrees(0))
+        }
+    }
+
+    private func cycleActive(forward: Bool) {
+        guard let activeID = activeCardID,
+              let idx = cards.firstIndex(where: { $0.id == activeID }) else { return }
+        let nextIdx = forward ? min(idx + 1, cards.count - 1)
+                              : max(idx - 1, 0)
+        activeCardID = cards[nextIdx].id
     }
 
     @ViewBuilder
     private func cardView(for card: CardItem) -> some View {
         let isActive = card.id == activeCardID
-        let liveOffset: CGSize = isActive && isDragging
-            ? CGSize(width: card.offset.width + dragOffset.width,
-                     height: card.offset.height + dragOffset.height)
-            : card.offset
+        let pose = slotPose(for: card.id)
+        let liveX = pose.offset.width + swipeOffset
 
         ZStack {
             cardImage(named: card.imageName)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: cardWidth(for: card), height: cardHeight(for: card))
+                .frame(width: 116, height: 168)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .shadow(color: .black.opacity(isActive ? 0.16 : 0.05),
                         radius: isActive ? 10 : 4,
@@ -183,48 +212,13 @@ struct TrayEditor: View {
 
             if isActive {
                 cornerHandles
-                    .frame(width: cardWidth(for: card) + 6,
-                           height: cardHeight(for: card) + 6)
+                    .frame(width: 116 + 6, height: 168 + 6)
             }
         }
-        .rotationEffect(card.rotation)
-        .offset(liveOffset)
+        .scaleEffect(isActive ? 1.12 : 1.0)
+        .rotationEffect(pose.rotation)
+        .offset(x: liveX, y: pose.offset.height)
         .zIndex(isActive ? 100 : 0)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                activeCardID = card.id
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { value in
-                    if !isDragging {
-                        isDragging = true
-                        activeCardID = card.id
-                        dragStartOffset = card.offset
-                    }
-                    dragOffset = value.translation
-                }
-                .onEnded { value in
-                    if let idx = cards.firstIndex(where: { $0.id == card.id }) {
-                        cards[idx].offset = CGSize(
-                            width: dragStartOffset.width + value.translation.width,
-                            height: dragStartOffset.height + value.translation.height
-                        )
-                    }
-                    dragOffset = .zero
-                    isDragging = false
-                }
-        )
-    }
-
-    private func cardWidth(for card: CardItem) -> CGFloat {
-        card.id == activeCardID ? 130 : 116
-    }
-
-    private func cardHeight(for card: CardItem) -> CGFloat {
-        card.id == activeCardID ? 188 : 168
     }
 
     private func cardImage(named name: String) -> Image {
