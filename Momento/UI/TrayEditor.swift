@@ -2,8 +2,8 @@ import SwiftUI
 
 struct TrayEditor: View {
     enum Mode: String, CaseIterable, Identifiable {
-        case boring = "Boring"
-        case custom = "Custom"
+        case boring = "Folder"
+        case custom = "Stamps"
         var id: String { rawValue }
     }
 
@@ -427,14 +427,14 @@ struct TrayEditor: View {
 
     private var sourcePill: some View {
         HStack(spacing: 10) {
-            Text("Source")
+            Text("May 11, 2026")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.55))
 
             Spacer(minLength: 4)
 
             HStack(spacing: 4) {
-                Text("cargoworld")
+                Text("tokyo")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.95))
                 Image(systemName: "globe")
@@ -456,12 +456,16 @@ struct TrayEditor: View {
 
     private var saveButton: some View {
         Button(action: handleSave) {
-            Text("Save")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 12)
-                .background(Capsule().fill(Color.black))
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Stamp")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .background(Capsule().fill(Color.black))
         }
     }
 
