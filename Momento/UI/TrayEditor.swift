@@ -169,7 +169,8 @@ struct TrayEditor: View {
             return SlotPose(offset: .zero, rotation: .degrees(0))
         }
         let slotSpacing: CGFloat = 95
-        switch cardIdx - activeIdx {
+        let diff = cardIdx - activeIdx
+        switch diff {
         case 0:
             return SlotPose(offset: CGSize(width: 0, height: -4), rotation: .degrees(-8))
         case 1:
@@ -181,7 +182,11 @@ struct TrayEditor: View {
         case -2:
             return SlotPose(offset: CGSize(width: -slotSpacing * 2, height: 18), rotation: .degrees(-2))
         default:
-            return SlotPose(offset: .zero, rotation: .degrees(0))
+            // Beyond visible slots: extrapolate so off-stack cards stay off-screen
+            // instead of collapsing to center and showing behind the active card.
+            let x = CGFloat(diff) * slotSpacing
+            return SlotPose(offset: CGSize(width: x, height: diff > 0 ? 6 : 18),
+                            rotation: .degrees(diff > 0 ? 5 : -2))
         }
     }
 
@@ -198,6 +203,15 @@ struct TrayEditor: View {
         let isActive = card.id == activeCardID
         let pose = slotPose(for: card.id)
         let liveX = pose.offset.width + swipeOffset
+        let diff: Int = {
+            guard let activeID = activeCardID,
+                  let activeIdx = cards.firstIndex(where: { $0.id == activeID }),
+                  let cardIdx = cards.firstIndex(where: { $0.id == card.id }) else {
+                return 0
+            }
+            return cardIdx - activeIdx
+        }()
+        let baseOpacity: Double = abs(diff) > 2 ? 0 : (isActive ? 1.0 : 0.42)
 
         ZStack {
             cardImage(named: card.imageName)
@@ -208,7 +222,7 @@ struct TrayEditor: View {
                 .shadow(color: .black.opacity(isActive ? 0.16 : 0.05),
                         radius: isActive ? 10 : 4,
                         x: 0, y: isActive ? 6 : 2)
-                .opacity(isActive ? 1.0 : 0.42)
+                .opacity(baseOpacity)
 
             if isActive {
                 cornerHandles
