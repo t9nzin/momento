@@ -40,11 +40,6 @@ struct TrayEditor: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                libraryHeader
-                    .padding(.horizontal, 18)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-
                 Spacer(minLength: 0)
 
                 HStack(alignment: .top, spacing: 18) {
@@ -55,9 +50,14 @@ struct TrayEditor: View {
                     FolderCard()
                         .frame(width: 160)
                 }
-                .fixedSize()
                 .padding(.bottom, 12)
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            libraryHeader
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             trayContent
