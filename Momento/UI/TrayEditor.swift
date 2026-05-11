@@ -56,8 +56,7 @@ struct TrayEditor: View {
                             .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 6)
                     )
                     .padding(.horizontal, 10)
-
-                Spacer(minLength: 10)
+                    .offset(y: 18)
             }
         }
         .onAppear {
@@ -84,12 +83,10 @@ struct TrayEditor: View {
                 .padding(.bottom, 14)
 
             floatingControlPill
-
-            Spacer(minLength: 16)
+                .padding(.bottom, 18)
 
             titleBlock
-
-            Spacer(minLength: 16)
+                .padding(.bottom, 16)
 
             bottomBar
                 .padding(.horizontal, 14)
