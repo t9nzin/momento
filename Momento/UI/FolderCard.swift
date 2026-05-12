@@ -185,32 +185,25 @@ private struct ReplicaFolderFront: View {
                     .stroke(Color.black.opacity(0.10), lineWidth: 1)
                     .blur(radius: 1.2)
             }
-            // Bright directional inner highlight: only on the selected folder.
-            // The gradient angle slowly rotates so the bezel "shimmers".
+            // Bright directional inner highlight on the selected folder only.
             .overlay {
                 if isHighlighted {
-                    TimelineView(.animation(minimumInterval: 1.0/30.0, paused: false)) { ctx in
-                        let t = ctx.date.timeIntervalSinceReferenceDate
-                        let angle = (t.truncatingRemainder(dividingBy: 4.0)) / 4.0 * 2 * .pi
-                        let dx = CGFloat(cos(angle))
-                        let dy = CGFloat(sin(angle))
-                        FolderOutlineShape()
-                            .stroke(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(0.95), location: 0.0),
-                                        .init(color: Color.white.opacity(0.75), location: 0.18),
-                                        .init(color: Color(red: 1.00, green: 0.78, blue: 0.82).opacity(0.65), location: 0.55),
-                                        .init(color: Color(red: 0.78, green: 0.78, blue: 0.95).opacity(0.65), location: 0.85),
-                                        .init(color: Color.white.opacity(0.40), location: 1.0)
-                                    ],
-                                    startPoint: UnitPoint(x: 0.5 - dx * 0.5, y: 0.5 - dy * 0.5),
-                                    endPoint:   UnitPoint(x: 0.5 + dx * 0.5, y: 0.5 + dy * 0.5)
-                                ),
-                                lineWidth: 1.6
-                            )
-                    }
-                    .transition(.opacity)
+                    FolderOutlineShape()
+                        .stroke(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.95), location: 0.0),
+                                    .init(color: Color.white.opacity(0.75), location: 0.18),
+                                    .init(color: Color(red: 1.00, green: 0.78, blue: 0.82).opacity(0.65), location: 0.55),
+                                    .init(color: Color(red: 0.78, green: 0.78, blue: 0.95).opacity(0.65), location: 0.85),
+                                    .init(color: Color.white.opacity(0.40), location: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.6
+                        )
+                        .transition(.opacity)
                 }
             }
             // Inner glow: a second thinner white stroke set slightly inside

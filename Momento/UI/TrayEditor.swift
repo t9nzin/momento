@@ -309,7 +309,7 @@ struct TrayEditor: View {
         // matching the reference screenshots. Sweeps from below the card to
         // above it as progress goes 0→1.
         let cardHeight: CGFloat = 168
-        let bandHeight: CGFloat = 90
+        let bandHeight: CGFloat = 68
         let bandWidth: CGFloat = 180
         let tilt: Angle = .degrees(-12)
         // Travel must move the band fully past both ends of the card.
