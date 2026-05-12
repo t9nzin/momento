@@ -7,10 +7,11 @@ struct FolderCard: View {
     var title: String = "Japan 2024"
     var photoCount: Int = 83
     var leftSticker: String = "FlagSticker"
+    var leftStickerScale: CGFloat = 1.0
     var rightSticker: String = "FlagSticker"
+    var rightStickerScale: CGFloat = 1.0
     var extraSticker: String? = nil
-
-    @State private var isExpanded = false
+    var isExpanded: Bool = false
 
     private struct PhotoLayout {
         let asset: String
@@ -65,7 +66,7 @@ struct FolderCard: View {
                         Image(leftSticker)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: folderW * 0.250)
+                            .frame(width: folderW * 0.250 * leftStickerScale)
                             .rotationEffect(.degrees(-8))
                             .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
                             .offset(x: -folderW * 0.255, y: -folderW * 0.150)
@@ -73,7 +74,7 @@ struct FolderCard: View {
                         Image(rightSticker)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: folderW * 0.293)
+                            .frame(width: folderW * 0.293 * rightStickerScale)
                             .rotationEffect(.degrees(7))
                             .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
                             .offset(x: folderW * 0.231, y: folderW * 0.013)
@@ -113,11 +114,7 @@ struct FolderCard: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
-                isExpanded.toggle()
-            }
-        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: isExpanded)
     }
 
     private var folderWidthRatio: CGFloat { 0.72 }

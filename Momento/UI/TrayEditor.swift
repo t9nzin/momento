@@ -28,8 +28,13 @@ struct TrayEditor: View {
 
     @State private var activeCardID: UUID?
     @State private var swipeOffset: CGFloat = 0
+    @State private var activeFolderIndex: Int = 1
     @State private var titleText = "cargoworld"
     @State private var subtitleText = ""
+
+    private let folderTitles = ["Italy 2025", "Japan 2024", "Amsterdam 2024"]
+    private let folderLeftStickers = ["ItalyFlag", "FlagSticker", "Tulip"]
+    private let folderRightStickers = ["Lemon", "JapanDecor", "DutchFlag"]
 
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
@@ -43,13 +48,30 @@ struct TrayEditor: View {
                 Spacer(minLength: 0)
 
                 HStack(alignment: .top, spacing: 18) {
-                    FolderCard()
+                    ForEach(0..<3, id: \.self) { idx in
+                        FolderCard(
+                            title: folderTitles[idx],
+                            leftSticker: folderLeftStickers[idx],
+                            rightSticker: folderRightStickers[idx],
+                            isExpanded: idx == activeFolderIndex
+                        )
                         .frame(width: 160)
-                    FolderCard()
-                        .frame(width: 160)
-                    FolderCard()
-                        .frame(width: 160)
+                    }
                 }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onEnded { value in
+                            let threshold: CGFloat = 40
+                            withAnimation(.snappy(duration: 0.28)) {
+                                if value.translation.width < -threshold {
+                                    activeFolderIndex = min(activeFolderIndex + 1, 2)
+                                } else if value.translation.width > threshold {
+                                    activeFolderIndex = max(activeFolderIndex - 1, 0)
+                                }
+                            }
+                        }
+                )
                 .padding(.bottom, 12)
             }
         }
