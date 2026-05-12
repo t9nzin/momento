@@ -28,6 +28,9 @@ struct TrayEditor: View {
 
     @State private var activeCardID: UUID?
     @State private var swipeOffset: CGFloat = 0
+    @State private var shineCardID: UUID? = nil
+    @State private var shineStartDate: Date = .distantPast
+    private let shineDuration: TimeInterval = 0.7
     @State private var activeFolderIndex: Int = 1
     @State private var expandedFolderIndex: Int = 1
     @State private var titleText = "cargoworld"
@@ -236,6 +239,7 @@ struct TrayEditor: View {
                 }
                 .onEnded { value in
                     let threshold: CGFloat = 40
+                    let previousID = activeCardID
                     withAnimation(.snappy(duration: 0.28)) {
                         if value.translation.width < -threshold {
                             cycleActive(forward: true)
@@ -243,6 +247,9 @@ struct TrayEditor: View {
                             cycleActive(forward: false)
                         }
                         swipeOffset = 0
+                    }
+                    if let newID = activeCardID, newID != previousID {
+                        triggerShine(for: newID)
                     }
                 }
         )
@@ -281,7 +288,58 @@ struct TrayEditor: View {
               let idx = cards.firstIndex(where: { $0.id == activeID }) else { return }
         let nextIdx = forward ? min(idx + 1, cards.count - 1)
                               : max(idx - 1, 0)
-        activeCardID = cards[nextIdx].id
+        let newID = cards[nextIdx].id
+        guard newID != activeID else { return }
+        activeCardID = newID
+    }
+
+    private func triggerShine(for cardID: UUID) {
+        shineCardID = cardID
+        shineStartDate = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + shineDuration + 0.05) {
+            if shineCardID == cardID {
+                shineCardID = nil
+            }
+        }
+    }
+
+    private func shineOverlay(progress: CGFloat) -> some View {
+        // Card size 116×168. Band is wide (full width + overhang) and tall
+        // enough to read as a soft swipe of light, with a slight upward tilt
+        // matching the reference screenshots. Sweeps from below the card to
+        // above it as progress goes 0→1.
+        let cardHeight: CGFloat = 168
+        let bandHeight: CGFloat = 90
+        let bandWidth: CGFloat = 180
+        let tilt: Angle = .degrees(-12)
+        // Travel must move the band fully past both ends of the card.
+        let travel = cardHeight + bandHeight
+        let y = (travel / 2) - progress * travel
+        // Fade in/out at the endpoints so it doesn't pop.
+        let fade: CGFloat = {
+            if progress < 0.10 { return max(0, progress / 0.10) }
+            if progress > 0.90 { return max(0, (1.0 - progress) / 0.10) }
+            return 1.0
+        }()
+        return Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0),
+                        .white.opacity(0.55),
+                        .white.opacity(0.95),
+                        .white.opacity(0.55),
+                        .white.opacity(0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: bandWidth, height: bandHeight)
+            .rotationEffect(tilt)
+            .offset(y: y)
+            .opacity(Double(max(0, min(1, fade))))
+            .blur(radius: 3)
     }
 
     @ViewBuilder
@@ -304,6 +362,20 @@ struct TrayEditor: View {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: 116, height: 168)
+                .overlay {
+                    if shineCardID == card.id {
+                        TimelineView(.animation(minimumInterval: 1.0/60.0)) { ctx in
+                            let elapsed = ctx.date.timeIntervalSince(shineStartDate)
+                            let raw = min(max(elapsed / shineDuration, 0), 1)
+                            // easeInOut over the progress axis
+                            let eased: Double = raw < 0.5
+                                ? 2 * raw * raw
+                                : 1 - pow(-2 * raw + 2, 2) / 2
+                            shineOverlay(progress: CGFloat(eased))
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .shadow(color: .black.opacity(isActive ? 0.16 : 0.05),
                         radius: isActive ? 10 : 4,
