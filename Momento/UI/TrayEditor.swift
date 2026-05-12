@@ -36,6 +36,11 @@ struct TrayEditor: View {
     private let folderTitles = ["Italy 2025", "Japan 2024", "Amsterdam 2024"]
     private let folderLeftStickers = ["ItalyFlag", "FlagSticker", "Tulip"]
     private let folderRightStickers = ["Lemon", "JapanDecor", "DutchFlag"]
+    private let folderPhotoAssets: [[String]?] = [
+        ["it1", "it2", "it3"],
+        nil,
+        ["am1", "am2", "am3"]
+    ]
 
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
@@ -54,7 +59,8 @@ struct TrayEditor: View {
                             title: folderTitles[idx],
                             leftSticker: folderLeftStickers[idx],
                             rightSticker: folderRightStickers[idx],
-                            isExpanded: idx == expandedFolderIndex
+                            isExpanded: idx == expandedFolderIndex,
+                            photoAssets: folderPhotoAssets[idx]
                         )
                         .frame(width: 160)
                     }

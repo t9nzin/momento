@@ -12,6 +12,8 @@ struct FolderCard: View {
     var rightStickerScale: CGFloat = 1.0
     var extraSticker: String? = nil
     var isExpanded: Bool = false
+    /// Override the three peek-photo assets. Order: [center, left, right].
+    var photoAssets: [String]? = nil
 
     private struct PhotoLayout {
         let asset: String
@@ -44,11 +46,13 @@ struct FolderCard: View {
                 let w = geo.size.width
                 let folderW = w * folderWidthRatio
                 ZStack {
-                    ForEach(Array(photos.enumerated()), id: \.offset) { _, p in
+                    ForEach(Array(photos.enumerated()), id: \.offset) { idx, p in
                         let x = isExpanded ? p.xHover : p.xDefault
                         let y = isExpanded ? p.yHover : p.yDefault
                         let r = isExpanded ? p.rotationHover : p.rotationDefault
-                        PeekPhoto(assetName: p.asset, width: folderW * polaroidSize)
+                        let asset = (photoAssets != nil && idx < (photoAssets?.count ?? 0))
+                            ? photoAssets![idx] : p.asset
+                        PeekPhoto(assetName: asset, width: folderW * polaroidSize)
                             .rotationEffect(.degrees(r))
                             .offset(x: folderW * x, y: folderW * y)
                     }
