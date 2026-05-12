@@ -7,12 +7,17 @@ struct MomentoApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: Memento.self)
+        .modelContainer(for: [Folder.self, Memento.self])
     }
 }
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
+
     var body: some View {
         TrayEditor()
+            .task {
+                FolderSeed.seedIfNeeded(context: modelContext)
+            }
     }
 }

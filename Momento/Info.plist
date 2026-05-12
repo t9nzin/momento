@@ -22,6 +22,8 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>Momento uses the camera so you can scan and collect mementos from the world around you.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Momento records the location of each stamp so you can revisit your captures on a map.</string>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UIRequiredDeviceCapabilities</key>

@@ -11,6 +11,9 @@ struct CameraView: UIViewRepresentable {
         view.previewLayer.session = controller.session
         view.previewLayer.videoGravity = .resizeAspectFill
         view.onTap = onTap
+        // Hand the layer back to the controller so capture-time crop math can
+        // use `metadataOutputRectConverted(fromLayerRect:)`.
+        controller.previewLayer = view.previewLayer
         return view
     }
 

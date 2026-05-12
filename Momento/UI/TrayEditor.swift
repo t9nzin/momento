@@ -1,4 +1,6 @@
 import SwiftUI
+import SwiftData
+import AVFoundation
 
 struct TrayEditor: View {
     enum Mode: String, CaseIterable, Identifiable {
@@ -7,24 +9,15 @@ struct TrayEditor: View {
         var id: String { rawValue }
     }
 
-    struct CardItem: Identifiable, Equatable {
-        let id = UUID()
-        let imageName: String
-    }
-
     private struct SlotPose {
         let offset: CGSize
         let rotation: Angle
     }
 
-    @State private var mode: Mode = .custom
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Folder.order) private var folders: [Folder]
 
-    @State private var cards: [CardItem] = [
-        CardItem(imageName: "cardNoProblem"),
-        CardItem(imageName: "cardKassian"),
-        CardItem(imageName: "cardLandscape"),
-        CardItem(imageName: "cardText")
-    ]
+    @State private var mode: Mode = .custom
 
     @State private var activeCardID: UUID?
     @State private var swipeOffset: CGFloat = 0
@@ -35,18 +28,61 @@ struct TrayEditor: View {
     @State private var expandedFolderIndex: Int = 1
     @State private var titleText = "cargoworld"
     @State private var subtitleText = ""
+    @State private var morphProgress: CGFloat = 0
 
-    private let folderTitles = ["Italy 2025", "Japan 2024", "Amsterdam 2024"]
-    private let folderLeftStickers = ["ItalyFlag", "FlagSticker", "Tulip"]
-    private let folderRightStickers = ["Lemon", "JapanDecor", "DutchFlag"]
-    private let folderPhotoAssets: [[String]?] = [
-        ["it1", "it2", "it3"],
-        nil,
-        ["am1", "am2", "am3"]
-    ]
+    /// Local visual order of the centered folder's stamps. Tracks Send-to-back /
+    /// Bring-to-front actions without mutating the persisted relationship.
+    @State private var stampOrder: [UUID] = []
+    /// Generation counter that changes when the centered folder swaps, so the
+    /// stamp container can apply a single transition rather than animating each
+    /// stamp independently.
+    @State private var stampSwapToken: UUID = UUID()
+    @State private var showStampPunch = false
+    /// Shared camera so the AVCaptureSession isn't rebuilt each time the
+    /// punch view is presented (saves ~1s of warm-up on second+ presentations).
+    @StateObject private var sharedCamera = CameraController()
+
+    private enum NavTab: String, CaseIterable, Identifiable {
+        case plus, globe
+        var id: String { rawValue }
+        var symbol: String { self == .plus ? "plus" : "globe" }
+    }
+    @State private var navTab: NavTab = .plus
+    @State private var navMorphProgress: CGFloat = 0
+    @State private var showStampMap: Bool = false
 
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
+
+    // MARK: - Derived folder/stamp state
+
+    private var centeredFolder: Folder? {
+        folders.indices.contains(activeFolderIndex) ? folders[activeFolderIndex] : nil
+    }
+
+    @ViewBuilder
+    private func folderCardView(idx: Int, folder: Folder) -> some View {
+        let peeks: [String]? = folder.peekPhotoAssets.isEmpty ? nil : folder.peekPhotoAssets
+        FolderCard(
+            title: folder.name,
+            photoCount: folder.stamps.count,
+            leftSticker: folder.leftStickerAsset,
+            rightSticker: folder.rightStickerAsset,
+            isExpanded: idx == expandedFolderIndex,
+            photoAssets: peeks
+        )
+        .frame(width: 160)
+    }
+
+    private var currentStamps: [Memento] {
+        guard let folder = centeredFolder else { return [] }
+        let byID = Dictionary(uniqueKeysWithValues: folder.stamps.map { ($0.id, $0) })
+        let ordered = stampOrder.compactMap { byID[$0] }
+        let known = Set(stampOrder)
+        let extras = folder.stamps.filter { !known.contains($0.id) }
+            .sorted { $0.createdAt < $1.createdAt }
+        return ordered + extras
+    }
 
     var body: some View {
         ZStack {
@@ -57,15 +93,8 @@ struct TrayEditor: View {
                 Spacer(minLength: 0)
 
                 HStack(alignment: .top, spacing: 18) {
-                    ForEach(0..<3, id: \.self) { idx in
-                        FolderCard(
-                            title: folderTitles[idx],
-                            leftSticker: folderLeftStickers[idx],
-                            rightSticker: folderRightStickers[idx],
-                            isExpanded: idx == expandedFolderIndex,
-                            photoAssets: folderPhotoAssets[idx]
-                        )
-                        .frame(width: 160)
+                    ForEach(Array(folders.enumerated()), id: \.element.id) { idx, folder in
+                        folderCardView(idx: idx, folder: folder)
                     }
                 }
                 .offset(x: CGFloat(1 - activeFolderIndex) * 178)
@@ -76,9 +105,10 @@ struct TrayEditor: View {
                         .onEnded { value in
                             let threshold: CGFloat = 40
                             let previous = activeFolderIndex
+                            let maxIndex = max(folders.count - 1, 0)
                             var next = previous
                             if value.translation.width < -threshold {
-                                next = min(previous + 1, 2)
+                                next = min(previous + 1, maxIndex)
                             } else if value.translation.width > threshold {
                                 next = max(previous - 1, 0)
                             }
@@ -118,10 +148,51 @@ struct TrayEditor: View {
                 .ignoresSafeArea(.container, edges: .bottom)
                 .offset(y: 16)
         }
-        .onAppear {
-            if activeCardID == nil {
-                activeCardID = cards.first(where: { $0.imageName == "cardKassian" })?.id ?? cards.first?.id
+        .onAppear { syncCenteredFolder() }
+        .onChange(of: centeredFolder?.id) { _, _ in
+            syncCenteredFolder()
+        }
+        .onChange(of: folders.count) { _, _ in
+            syncCenteredFolder()
+        }
+        .fullScreenCover(isPresented: $showStampPunch) {
+            if let folder = centeredFolder {
+                StampPunchView(folder: folder, camera: sharedCamera)
             }
+        }
+        .sheet(isPresented: $showStampMap) {
+            StampMapView()
+        }
+        .onChange(of: showStampMap) { _, isShown in
+            // Snap the nav-pill bubble back to + when the map sheet closes so
+            // a follow-up tap on the globe will animate again.
+            if !isShown && navTab == .globe {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+                    navTab = .plus
+                }
+            }
+        }
+    }
+
+    private func syncCenteredFolder() {
+        guard let folder = centeredFolder else {
+            stampOrder = []
+            activeCardID = nil
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.30)) {
+            stampOrder = folder.stamps
+                .sorted { $0.createdAt < $1.createdAt }
+                .map(\.id)
+            stampSwapToken = UUID()
+        }
+        let midIdx = stampOrder.count / 2
+        if let active = activeCardID, stampOrder.contains(active) {
+            // keep existing selection
+        } else {
+            activeCardID = stampOrder.indices.contains(midIdx)
+                ? stampOrder[midIdx]
+                : stampOrder.first
         }
     }
 
@@ -138,26 +209,91 @@ struct TrayEditor: View {
     }
 
     private var navPillBar: some View {
-        HStack(spacing: 14) {
-            Button(action: {}) {
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.75))
-            }
-            Button(action: {}) {
-                Image(systemName: "globe")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.75))
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let inset: CGFloat = 3
+            let segW = (totalW - inset * 2) / CGFloat(NavTab.allCases.count)
+            let segH = totalH - inset * 2
+            let bubbleX = inset + (navTab == .plus ? 0 : segW)
+
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Color.white)
+                    .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+
+                navMovingBubble(width: segW, height: segH)
+                    .offset(x: bubbleX, y: inset)
+                    .animation(.spring(response: 0.46, dampingFraction: 0.62), value: navTab)
+
+                HStack(spacing: 0) {
+                    ForEach(NavTab.allCases) { tab in
+                        let selected = (navTab == tab)
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(selected ? Color.black.opacity(0.85) : Color.black.opacity(0.40))
+                            .animation(.easeInOut(duration: 0.22), value: navTab)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectNavTab(tab) }
+                    }
+                }
+                .padding(inset)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color.white)
-                .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
-        )
-        .buttonStyle(.plain)
+        .frame(width: 78, height: 34)
+    }
+
+    private func selectNavTab(_ tab: NavTab) {
+        if navTab != tab {
+            navTab = tab
+            withAnimation(.easeOut(duration: 0.22)) {
+                navMorphProgress = 1
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+                    navMorphProgress = 0
+                }
+            }
+        }
+        if tab == .globe { showStampMap = true }
+    }
+
+    private func navMovingBubble(width: CGFloat, height: CGFloat) -> some View {
+        let m = Double(navMorphProgress)
+        return Capsule()
+            .fill(Color.black.opacity(0.06))
+            .frame(width: width, height: height)
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.75),
+                                Color.white.opacity(0.15),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.6
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: width, height: height)
+                    .opacity(0.55 * m)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: Color.black.opacity(0.10 + 0.08 * m),
+                    radius: 4 + 4 * navMorphProgress,
+                    x: 0,
+                    y: 2 + 1 * navMorphProgress)
+            .scaleEffect(x: 1.0 + 0.08 * navMorphProgress,
+                         y: 1.0 - 0.06 * navMorphProgress)
+            .blur(radius: 0.5 * navMorphProgress)
+            .opacity(1.0 - 0.10 * m)
     }
 
     private func headerCircleButton(systemName: String, action: @escaping () -> Void) -> some View {
@@ -210,37 +346,96 @@ struct TrayEditor: View {
 
     // MARK: - Segmented control
 
+    private static let pillBaseColor    = Color(red:  83/255.0, green:  83/255.0, blue:  90/255.0)
+    private static let pillInactiveText = Color(red: 154/255.0, green: 154/255.0, blue: 159/255.0)
+    private static let pillActiveBubble = Color(red:   5/255.0, green:   5/255.0, blue:   5/255.0)
+
     private var segmentedControl: some View {
-        HStack(spacing: 4) {
-            ForEach(Mode.allCases) { option in
-                let selected = mode == option
-                Text(option.rawValue)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(selected ? Color.white : Color.white.opacity(0.55))
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        ZStack {
-                            if selected {
-                                Capsule()
-                                    .fill(Color.black)
-                            }
-                        }
-                    )
-                    .contentShape(Capsule())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                            mode = option
-                        }
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let inset: CGFloat = 4
+            let segW = (totalW - inset * 2) / CGFloat(Mode.allCases.count)
+            let segH = totalH - inset * 2
+            let isFolder = (mode == .boring)
+            let bubbleX = inset + (isFolder ? 0 : segW)
+
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Self.pillBaseColor)
+
+                movingBubble(width: segW, height: segH)
+                    .offset(x: bubbleX, y: inset)
+                    .animation(.spring(response: 0.46, dampingFraction: 0.62), value: mode)
+
+                HStack(spacing: 0) {
+                    ForEach(Mode.allCases) { option in
+                        let selected = (mode == option)
+                        Text(option.rawValue)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(selected ? Color.white : Self.pillInactiveText)
+                            .animation(.easeInOut(duration: 0.22), value: mode)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectMode(option) }
                     }
+                }
+                .padding(inset)
             }
         }
-        .padding(4)
-        .background(
-            Capsule()
-                .fill(Color(red: 0.30, green: 0.30, blue: 0.32))
-        )
+        .frame(height: 40)
         .frame(maxWidth: 240)
+    }
+
+    private func selectMode(_ option: Mode) {
+        guard mode != option else { return }
+        mode = option
+        withAnimation(.easeOut(duration: 0.22)) {
+            morphProgress = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+                morphProgress = 0
+            }
+        }
+    }
+
+    private func movingBubble(width: CGFloat, height: CGFloat) -> some View {
+        let m = Double(morphProgress)
+        return Capsule()
+            .fill(Self.pillActiveBubble)
+            .frame(width: width, height: height)
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.32),
+                                Color.white.opacity(0.06),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.7
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: width, height: height)
+                    .opacity(0.42 * m)
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: Color.black.opacity(0.28 + 0.12 * m),
+                    radius: 6 + 6 * morphProgress,
+                    x: 0,
+                    y: 3 + 2 * morphProgress)
+            .scaleEffect(x: 1.0 + 0.08 * morphProgress,
+                         y: 1.0 - 0.06 * morphProgress)
+            .blur(radius: 0.7 * morphProgress)
+            .opacity(1.0 - 0.15 * m)
     }
 
     // MARK: - Canvas
@@ -250,9 +445,16 @@ struct TrayEditor: View {
             dottedBackground
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            ForEach(cards) { card in
-                cardView(for: card)
+            ZStack {
+                ForEach(currentStamps, id: \.id) { stamp in
+                    cardView(for: stamp)
+                }
             }
+            .id(stampSwapToken)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .offset(x: 30, y: 0)),
+                removal: .opacity.combined(with: .offset(x: -30, y: 0))
+            ))
         }
         .frame(height: canvasHeight)
         .contentShape(Rectangle())
@@ -280,9 +482,10 @@ struct TrayEditor: View {
     }
 
     private func slotPose(for cardID: UUID) -> SlotPose {
+        let stamps = currentStamps
         guard let activeID = activeCardID,
-              let activeIdx = cards.firstIndex(where: { $0.id == activeID }),
-              let cardIdx = cards.firstIndex(where: { $0.id == cardID }) else {
+              let activeIdx = stamps.firstIndex(where: { $0.id == activeID }),
+              let cardIdx = stamps.firstIndex(where: { $0.id == cardID }) else {
             return SlotPose(offset: .zero, rotation: .degrees(0))
         }
         let slotSpacing: CGFloat = 95
@@ -308,11 +511,12 @@ struct TrayEditor: View {
     }
 
     private func cycleActive(forward: Bool) {
+        let stamps = currentStamps
         guard let activeID = activeCardID,
-              let idx = cards.firstIndex(where: { $0.id == activeID }) else { return }
-        let nextIdx = forward ? min(idx + 1, cards.count - 1)
+              let idx = stamps.firstIndex(where: { $0.id == activeID }) else { return }
+        let nextIdx = forward ? min(idx + 1, stamps.count - 1)
                               : max(idx - 1, 0)
-        let newID = cards[nextIdx].id
+        let newID = stamps[nextIdx].id
         guard newID != activeID else { return }
         activeCardID = newID
     }
@@ -367,14 +571,15 @@ struct TrayEditor: View {
     }
 
     @ViewBuilder
-    private func cardView(for card: CardItem) -> some View {
-        let isActive = card.id == activeCardID
-        let pose = slotPose(for: card.id)
+    private func cardView(for stamp: Memento) -> some View {
+        let stamps = currentStamps
+        let isActive = stamp.id == activeCardID
+        let pose = slotPose(for: stamp.id)
         let liveX = pose.offset.width + swipeOffset
         let diff: Int = {
             guard let activeID = activeCardID,
-                  let activeIdx = cards.firstIndex(where: { $0.id == activeID }),
-                  let cardIdx = cards.firstIndex(where: { $0.id == card.id }) else {
+                  let activeIdx = stamps.firstIndex(where: { $0.id == activeID }),
+                  let cardIdx = stamps.firstIndex(where: { $0.id == stamp.id }) else {
                 return 0
             }
             return cardIdx - activeIdx
@@ -382,12 +587,12 @@ struct TrayEditor: View {
         let baseOpacity: Double = abs(diff) > 2 ? 0 : (isActive ? 1.0 : 0.42)
 
         ZStack {
-            cardImage(named: card.imageName)
+            cardImage(for: stamp)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: 116, height: 168)
                 .overlay {
-                    if shineCardID == card.id {
+                    if shineCardID == stamp.id {
                         TimelineView(.animation(minimumInterval: 1.0/60.0)) { ctx in
                             let elapsed = ctx.date.timeIntervalSince(shineStartDate)
                             let raw = min(max(elapsed / shineDuration, 0), 1)
@@ -417,8 +622,8 @@ struct TrayEditor: View {
         .zIndex(isActive ? 100 : 0)
     }
 
-    private func cardImage(named name: String) -> Image {
-        if let ui = UIImage(named: name) {
+    private func cardImage(for stamp: Memento) -> Image {
+        if let ui = MementoStore.image(for: stamp) {
             return Image(uiImage: ui)
         }
         return Image(systemName: "photo")
@@ -495,20 +700,20 @@ struct TrayEditor: View {
                 HStack(spacing: 6) {
                     Image(systemName: "crop")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Crop")
+                    Text("Edit")
                         .font(.system(size: 15, weight: .medium))
                 }
                 .foregroundStyle(.black)
             }
 
             Button(action: sendActiveCardToBack) {
-                Text("Back")
+                Text("Stamp")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.black)
             }
 
             Button(action: bringActiveCardToFront) {
-                Text("Front")
+                Text("Story")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.black)
             }
@@ -527,16 +732,16 @@ struct TrayEditor: View {
 
     private func sendActiveCardToBack() {
         guard let activeID = activeCardID,
-              let idx = cards.firstIndex(where: { $0.id == activeID }) else { return }
-        let item = cards.remove(at: idx)
-        cards.insert(item, at: 0)
+              let idx = stampOrder.firstIndex(of: activeID) else { return }
+        let item = stampOrder.remove(at: idx)
+        stampOrder.insert(item, at: 0)
     }
 
     private func bringActiveCardToFront() {
         guard let activeID = activeCardID,
-              let idx = cards.firstIndex(where: { $0.id == activeID }) else { return }
-        let item = cards.remove(at: idx)
-        cards.append(item)
+              let idx = stampOrder.firstIndex(of: activeID) else { return }
+        let item = stampOrder.remove(at: idx)
+        stampOrder.append(item)
     }
 
     // MARK: - Title block
@@ -606,11 +811,18 @@ struct TrayEditor: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 12)
             .background(Capsule().fill(Color.black))
+            .opacity(showStampPunch ? 0.55 : 1.0)
         }
+        .disabled(showStampPunch)
     }
 
     private func handleSave() {
-        print("Save tapped — title=\(titleText) subtitle=\(subtitleText)")
+        guard centeredFolder != nil else { return }
+        guard !showStampPunch else { return }
+        // Present immediately. The camera handles permission + simulator
+        // internally so the cover never blocks waiting for hardware.
+        sharedCamera.requestAuthorizationAndStart()
+        showStampPunch = true
     }
 }
 
