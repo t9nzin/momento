@@ -62,7 +62,7 @@ struct FolderCard: View {
                     let folderScale = isExpanded ? 1.05 : 1.0
 
                     ZStack {
-                        ReplicaFolderFront(material: .ultraThinMaterial)
+                        ReplicaFolderFront(material: .ultraThinMaterial, isHighlighted: isExpanded)
                             .frame(width: folderW)
                             .opacity(0.99)
                             .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 6)
@@ -154,6 +154,7 @@ private struct PeekPhoto: View {
 /// two near-white capsule lines at the bottom.
 private struct ReplicaFolderFront: View {
     var material: Material
+    var isHighlighted: Bool = false
 
     // From Framer "Photos Folder > Default > Folder":
     //   backgroundColor=rgba(252,252,252,0.7), borderRadius=14, no stroke.
@@ -178,14 +179,70 @@ private struct ReplicaFolderFront: View {
                 FolderOutlineShape()
                     .fill(bodyFill)
             }
+            // Soft outer rim shadow — gives the folder physical presence.
             .overlay {
                 FolderOutlineShape()
-                    .stroke(Color.white.opacity(0.50), lineWidth: 1)
+                    .stroke(Color.black.opacity(0.10), lineWidth: 1)
+                    .blur(radius: 1.2)
             }
+            // Bright directional inner highlight: only on the selected folder.
+            // The gradient angle slowly rotates so the bezel "shimmers".
+            .overlay {
+                if isHighlighted {
+                    TimelineView(.animation(minimumInterval: 1.0/30.0, paused: false)) { ctx in
+                        let t = ctx.date.timeIntervalSinceReferenceDate
+                        let angle = (t.truncatingRemainder(dividingBy: 4.0)) / 4.0 * 2 * .pi
+                        let dx = CGFloat(cos(angle))
+                        let dy = CGFloat(sin(angle))
+                        FolderOutlineShape()
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.95), location: 0.0),
+                                        .init(color: Color.white.opacity(0.75), location: 0.18),
+                                        .init(color: Color(red: 1.00, green: 0.78, blue: 0.82).opacity(0.65), location: 0.55),
+                                        .init(color: Color(red: 0.78, green: 0.78, blue: 0.95).opacity(0.65), location: 0.85),
+                                        .init(color: Color.white.opacity(0.40), location: 1.0)
+                                    ],
+                                    startPoint: UnitPoint(x: 0.5 - dx * 0.5, y: 0.5 - dy * 0.5),
+                                    endPoint:   UnitPoint(x: 0.5 + dx * 0.5, y: 0.5 + dy * 0.5)
+                                ),
+                                lineWidth: 1.6
+                            )
+                    }
+                    .transition(.opacity)
+                }
+            }
+            // Inner glow: a second thinner white stroke set slightly inside
+            // the rim creates the frosted-glass bevel feel.
             .overlay {
                 FolderOutlineShape()
-                    .stroke(Color.black.opacity(0.025), lineWidth: 0.5)
-                    .blur(radius: 0.18)
+                    .stroke(Color.white.opacity(0.55), lineWidth: 0.6)
+                    .blur(radius: 0.4)
+                    .padding(0.8)
+            }
+            // Subtle dark hairline for definition against light backgrounds.
+            .overlay {
+                FolderOutlineShape()
+                    .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+            }
+            // Diagonal color wash bleeding from the edges — pink top-right,
+            // lavender bottom-left — for the iridescent glass look.
+            .overlay {
+                FolderOutlineShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.00, green: 0.85, blue: 0.88).opacity(0.06),
+                                .clear,
+                                Color(red: 0.85, green: 0.85, blue: 1.00).opacity(0.06)
+                            ],
+                            startPoint: .topTrailing,
+                            endPoint: .bottomLeading
+                        )
+                    )
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
             }
             .overlay {
                 GeometryReader { geo in
