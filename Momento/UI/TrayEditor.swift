@@ -126,14 +126,38 @@ struct TrayEditor: View {
     }
 
     private var libraryHeader: some View {
-        HStack {
-            headerCircleButton(systemName: "plus") { }
-            Spacer()
+        ZStack {
             Text("Library")
                 .font(.system(size: 17, weight: .semibold))
-            Spacer()
-            headerCircleButton(systemName: "ellipsis") { }
+            HStack {
+                navPillBar
+                Spacer()
+                headerCircleButton(systemName: "ellipsis") { }
+            }
         }
+    }
+
+    private var navPillBar: some View {
+        HStack(spacing: 14) {
+            Button(action: {}) {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.75))
+            }
+            Button(action: {}) {
+                Image(systemName: "globe")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.75))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.white)
+                .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+        )
+        .buttonStyle(.plain)
     }
 
     private func headerCircleButton(systemName: String, action: @escaping () -> Void) -> some View {
