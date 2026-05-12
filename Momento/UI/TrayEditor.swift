@@ -93,8 +93,9 @@ struct TrayEditor: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             libraryHeader
                 .padding(.horizontal, 18)
-                .padding(.top, 8)
+                .padding(.top, 0)
                 .padding(.bottom, 4)
+                .offset(y: 4)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             trayContent
