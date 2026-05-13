@@ -3,6 +3,7 @@ import SwiftData
 import AVFoundation
 import CoreImage
 import CoreLocation
+import PhotosUI
 import UIKit
 
 struct StampPunchView: View {
@@ -22,6 +23,9 @@ struct StampPunchView: View {
     @State private var sceneFade: CGFloat = 0        // 0 = camera bg, 1 = neutral bg
     @State private var reviewTilt: Double = 0
     @State private var errorMessage: String?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var photoLibraryImage: UIImage?
+    @State private var cutterPressTask: Task<Void, Never>?
 
     // Draggable cutter
     @State private var cutterOffset: CGSize = .zero
@@ -62,6 +66,7 @@ struct StampPunchView: View {
             LocationProvider.shared.start()
         }
         .onDisappear {
+            cancelCutterPress()
             camera.stop()
             LocationProvider.shared.stop()
         }
@@ -73,6 +78,9 @@ struct StampPunchView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .onChange(of: selectedPhotoItem) { _, item in
+            loadPhotoLibraryStamp(from: item)
         }
     }
 
@@ -93,16 +101,26 @@ struct StampPunchView: View {
     // MARK: - Camera background
 
     private var cameraBackground: some View {
-        ZStack {
-            Color(red: 0.96, green: 0.96, blue: 0.97)
-            if camera.isAuthorized && camera.hasCaptureDevice {
-                CameraView(controller: camera) { _, _ in }
-                    .opacity(1.0 - Double(sceneFade))
-                    .blur(radius: Double(sceneFade) * 18)
-            } else if CameraController.isSimulator {
-                cameraUnavailableHint(text: "Simulator — tap to punch with a placeholder image.")
-            } else if !camera.isAuthorized {
-                cameraUnavailableHint(text: "Camera access needed. Enable it in Settings.")
+        GeometryReader { geo in
+            ZStack {
+                Color(red: 0.96, green: 0.96, blue: 0.97)
+                if let photoLibraryImage {
+                    Image(uiImage: photoLibraryImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .opacity(1.0 - Double(sceneFade))
+                        .blur(radius: Double(sceneFade) * 18)
+                } else if camera.isAuthorized && camera.hasCaptureDevice {
+                    CameraView(controller: camera) { _, _ in }
+                        .opacity(1.0 - Double(sceneFade))
+                        .blur(radius: Double(sceneFade) * 18)
+                } else if CameraController.isSimulator {
+                    cameraUnavailableHint(text: "Simulator — tap to punch with a placeholder image.")
+                } else if !camera.isAuthorized {
+                    cameraUnavailableHint(text: "Camera access needed. Enable it in Settings.")
+                }
             }
         }
     }
@@ -191,26 +209,29 @@ struct StampPunchView: View {
                 let dist = hypot(value.translation.width, value.translation.height)
                 if !isDraggingCutter && dist > dragTapThreshold {
                     isDraggingCutter = true
+                    cancelCutterPress()
                 }
                 if isDraggingCutter {
                     cutterDragDelta = value.translation
+                } else {
+                    startCutterPress(viewSize: viewSize,
+                                     innerCenter: innerCenter,
+                                     innerW: innerW,
+                                     innerH: innerH)
                 }
             }
             .onEnded { value in
                 guard phase == .live else { return }
-                let dist = hypot(value.translation.width, value.translation.height)
                 if isDraggingCutter {
+                    cancelCutterPress()
                     cutterOffset = CGSize(
                         width: cutterOffset.width + value.translation.width,
                         height: cutterOffset.height + value.translation.height
                     )
                     cutterDragDelta = .zero
                     isDraggingCutter = false
-                } else if dist <= dragTapThreshold {
-                    triggerPunch(viewSize: viewSize,
-                                 innerCenter: innerCenter,
-                                 innerW: innerW,
-                                 innerH: innerH)
+                } else {
+                    cancelCutterPress()
                 }
             }
     }
@@ -236,7 +257,11 @@ struct StampPunchView: View {
             HStack {
                 roundIcon("xmark") { dismiss() }
                 Spacer()
-                roundIcon("photo.on.rectangle") {}
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    roundIconLabel("photo.on.rectangle")
+                }
+                .buttonStyle(.plain)
+                .disabled(phase == .lifting)
             }
             .padding(.horizontal, 18)
             .padding(.top, 60)
@@ -246,30 +271,34 @@ struct StampPunchView: View {
 
     private func roundIcon(_ systemName: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.78))
-                .frame(width: 42, height: 42)
-                .background(
-                    ZStack {
-                        Circle().fill(.ultraThinMaterial)
-                        Circle().fill(Color.white.opacity(0.18))
-                    }
-                )
-                .overlay(
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.8
-                        )
-                )
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+            roundIconLabel(systemName)
         }
         .buttonStyle(.plain)
+    }
+
+    private func roundIconLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.black.opacity(0.78))
+            .frame(width: 42, height: 42)
+            .background(
+                ZStack {
+                    Circle().fill(Color.white.opacity(0.72))
+                    Circle().fill(Color.white.opacity(0.22))
+                }
+            )
+            .overlay(
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
     }
 
     private var bottomBar: some View {
@@ -337,18 +366,27 @@ struct StampPunchView: View {
         pendingCoordinate = LocationProvider.shared.currentCoordinate()
 
         Task { @MainActor in
-            // Capture (or simulator placeholder)
             let cropped: UIImage?
-            do {
-                let full = try await camera.capturePhoto()
-                cropped = Self.cropToInnerWindow(
-                    image: full,
+            if let photoLibraryImage {
+                cropped = Self.cropAspectFillImage(
+                    image: photoLibraryImage,
                     innerWindow: innerRect,
-                    previewLayer: camera.previewLayer
+                    viewSize: viewSize
                 )
-            } catch {
-                cropped = Self.simulatorPlaceholder()
+            } else {
+                // Capture (or simulator placeholder)
+                do {
+                    let full = try await camera.capturePhoto()
+                    cropped = Self.cropToInnerWindow(
+                        image: full,
+                        innerWindow: innerRect,
+                        previewLayer: camera.previewLayer
+                    )
+                } catch {
+                    cropped = Self.simulatorPlaceholder()
+                }
             }
+
             guard let stamp = cropped else {
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.65)) {
                     pressAmount = 0
@@ -377,7 +415,45 @@ struct StampPunchView: View {
         }
     }
 
+    private func startCutterPress(viewSize: CGSize,
+                                  innerCenter: CGPoint,
+                                  innerW: CGFloat,
+                                  innerH: CGFloat) {
+        guard cutterPressTask == nil else { return }
+
+        withAnimation(.easeIn(duration: 0.16)) {
+            pressAmount = 1.0
+        }
+
+        cutterPressTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  phase == .live,
+                  !isDraggingCutter else { return }
+
+            cutterPressTask = nil
+            triggerPunch(viewSize: viewSize,
+                         innerCenter: innerCenter,
+                         innerW: innerW,
+                         innerH: innerH)
+        }
+    }
+
+    private func cancelCutterPress() {
+        cutterPressTask?.cancel()
+        cutterPressTask = nil
+        guard phase == .live else { return }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.72)) {
+            pressAmount = 0
+        }
+    }
+
     private func retake() {
+        cancelCutterPress()
         withAnimation(.easeInOut(duration: 0.25)) {
             phase = .live
             stampImage = nil
@@ -404,6 +480,52 @@ struct StampPunchView: View {
             dismiss()
         } catch {
             errorMessage = "Could not save: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadPhotoLibraryStamp(from item: PhotosPickerItem?) {
+        guard let item else { return }
+
+        Task {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else {
+                    await MainActor.run {
+                        selectedPhotoItem = nil
+                        errorMessage = "Couldn't load that photo."
+                    }
+                    return
+                }
+
+                await MainActor.run {
+                    let sourceImage = Self.normalizedImage(image)
+                    selectedPhotoItem = nil
+                    presentPhotoLibrarySource(sourceImage)
+                }
+            } catch {
+                await MainActor.run {
+                    selectedPhotoItem = nil
+                    errorMessage = "Couldn't load that photo."
+                }
+            }
+        }
+    }
+
+    private func presentPhotoLibrarySource(_ image: UIImage) {
+        cancelCutterPress()
+        pressAmount = 0
+        cutterDragDelta = .zero
+        isDraggingCutter = false
+        liftProgress = 0
+        sceneFade = 0
+        reviewTilt = 0
+        stampName = ""
+        stampImage = nil
+        pendingCoordinate = nil
+        cutterOffset = .zero
+        withAnimation(.easeInOut(duration: 0.22)) {
+            photoLibraryImage = image
+            phase = .live
         }
     }
 }
@@ -495,6 +617,64 @@ extension StampPunchView {
             if let img = UIImage(named: asset) { return img }
         }
         return nil
+    }
+
+    fileprivate static func normalizedImage(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+    }
+
+    fileprivate static func cropAspectFillImage(image: UIImage,
+                                                innerWindow: CGRect,
+                                                viewSize: CGSize) -> UIImage? {
+        let normalized = normalizedImage(image)
+        guard let cg = normalized.cgImage,
+              viewSize.width > 0,
+              viewSize.height > 0 else { return normalized }
+
+        let viewRect = CGRect(origin: .zero, size: viewSize)
+        let clampedWindow = innerWindow.intersection(viewRect)
+        guard !clampedWindow.isNull,
+              clampedWindow.width > 0,
+              clampedWindow.height > 0 else { return nil }
+
+        let imageW = CGFloat(cg.width)
+        let imageH = CGFloat(cg.height)
+        let imageAspect = imageW / imageH
+        let viewAspect = viewSize.width / viewSize.height
+        let visibleImageRect: CGRect
+
+        if imageAspect > viewAspect {
+            let visibleW = imageH * viewAspect
+            visibleImageRect = CGRect(
+                x: (imageW - visibleW) / 2,
+                y: 0,
+                width: visibleW,
+                height: imageH
+            )
+        } else {
+            let visibleH = imageW / viewAspect
+            visibleImageRect = CGRect(
+                x: 0,
+                y: (imageH - visibleH) / 2,
+                width: imageW,
+                height: visibleH
+            )
+        }
+
+        let cropRect = CGRect(
+            x: visibleImageRect.minX + (clampedWindow.minX / viewSize.width) * visibleImageRect.width,
+            y: visibleImageRect.minY + (clampedWindow.minY / viewSize.height) * visibleImageRect.height,
+            width: (clampedWindow.width / viewSize.width) * visibleImageRect.width,
+            height: (clampedWindow.height / viewSize.height) * visibleImageRect.height
+        ).integral
+
+        guard let cropped = cg.cropping(to: cropRect) else { return nil }
+        return UIImage(cgImage: cropped, scale: normalized.scale, orientation: .up)
     }
 
     /// Crops a full-res capture down to the cutter's inner-window rect by

@@ -62,7 +62,7 @@ struct FolderCard: View {
                     let folderScale = isExpanded ? 1.05 : 1.0
 
                     ZStack {
-                        ReplicaFolderFront(material: .ultraThinMaterial, isHighlighted: isExpanded)
+                        ReplicaFolderFront()
                             .frame(width: folderW)
                             .opacity(0.99)
                             .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 6)
@@ -153,12 +153,10 @@ private struct PeekPhoto: View {
 /// SVG) for the silhouette, filled with the exact Framer source colors plus
 /// two near-white capsule lines at the bottom.
 private struct ReplicaFolderFront: View {
-    var material: Material
-    var isHighlighted: Bool = false
-
-    // From Framer "Photos Folder > Default > Folder":
-    //   backgroundColor=rgba(252,252,252,0.7), borderRadius=14, no stroke.
-    private let bodyFill = Color.white.opacity(0.42)
+    // Stable, hand-tuned glass. Avoids relying on system material blending,
+    // which can render much more transparent on physical devices.
+    private let glassBaseFill = Color(red: 0.91, green: 0.91, blue: 0.92).opacity(0.93)
+    private let bodyFill = Color.white.opacity(0.36)
 
     // Framer lines: 168 wide × 2 tall, borderRadius 98 (capsule), centerX 50%.
     //   line 1 (bottom: 40) — backgroundColor=rgba(252,252,252,0.25)
@@ -174,37 +172,30 @@ private struct ReplicaFolderFront: View {
 
     var body: some View {
         FolderOutlineShape()
-            .fill(material)
+            .fill(glassBaseFill)
             .overlay {
                 FolderOutlineShape()
                     .fill(bodyFill)
+            }
+            .overlay {
+                FolderOutlineShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.48),
+                                Color.white.opacity(0.20),
+                                Color.black.opacity(0.035)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
             // Soft outer rim shadow — gives the folder physical presence.
             .overlay {
                 FolderOutlineShape()
                     .stroke(Color.black.opacity(0.10), lineWidth: 1)
                     .blur(radius: 1.2)
-            }
-            // Bright directional inner highlight on the selected folder only.
-            .overlay {
-                if isHighlighted {
-                    FolderOutlineShape()
-                        .stroke(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.95), location: 0.0),
-                                    .init(color: Color.white.opacity(0.75), location: 0.18),
-                                    .init(color: Color(red: 1.00, green: 0.78, blue: 0.82).opacity(0.65), location: 0.55),
-                                    .init(color: Color(red: 0.78, green: 0.78, blue: 0.95).opacity(0.65), location: 0.85),
-                                    .init(color: Color.white.opacity(0.40), location: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.6
-                        )
-                        .transition(.opacity)
-                }
             }
             // Inner glow: a second thinner white stroke set slightly inside
             // the rim creates the frosted-glass bevel feel.
@@ -219,16 +210,15 @@ private struct ReplicaFolderFront: View {
                 FolderOutlineShape()
                     .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
             }
-            // Diagonal color wash bleeding from the edges — pink top-right,
-            // lavender bottom-left — for the iridescent glass look.
+            // Neutral glass wash, kept free of colored edge tint.
             .overlay {
                 FolderOutlineShape()
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 1.00, green: 0.85, blue: 0.88).opacity(0.06),
+                                Color.white.opacity(0.10),
                                 .clear,
-                                Color(red: 0.85, green: 0.85, blue: 1.00).opacity(0.06)
+                                Color.black.opacity(0.025)
                             ],
                             startPoint: .topTrailing,
                             endPoint: .bottomLeading

@@ -14,6 +14,8 @@ struct StampMapView: View {
         )
     )
     @State private var didInitialZoom = false
+    @State private var visibleLatitudeDelta: CLLocationDegrees = 0.04
+    @State private var groupDisplayIndices: [String: Int] = [:]
     /// Roughly city-block zoom — a few km across.
     private let cityZoomSpan = MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
 
@@ -21,25 +23,52 @@ struct StampMapView: View {
         allMementos.filter { $0.latitude != nil && $0.longitude != nil }
     }
 
+    private var stampGroups: [MapStampGroup] {
+        let grouped = Dictionary(grouping: locatedStamps, by: stampGroupKey)
+        return grouped.compactMap { key, stamps in
+            MapStampGroup(key: key, stamps: stamps)
+        }
+        .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private var stampZoomScale: CGFloat {
+        let raw = log2(cityZoomSpan.latitudeDelta / max(visibleLatitudeDelta, 0.0001))
+        return min(max(1.0 + CGFloat(raw) * 0.055, 0.84), 1.12)
+    }
+
     var body: some View {
         ZStack {
             Map(position: $cameraPosition) {
-                ForEach(locatedStamps, id: \.id) { stamp in
-                    if let lat = stamp.latitude, let lon = stamp.longitude {
-                        Annotation(
-                            stamp.name,
-                            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                            anchor: .bottom
-                        ) {
-                            StampMapTile(memento: stamp)
-                        }
+                ForEach(stampGroups) { group in
+                    Annotation(
+                        "",
+                        coordinate: group.coordinate,
+                        anchor: .center
+                    ) {
+                        StampMapTile(
+                            memento: displayedStamp(for: group),
+                            count: group.count,
+                            zoomScale: stampZoomScale
+                        )
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 12)
+                                .onEnded { value in
+                                    cycleStamp(in: group, translation: value.translation.width)
+                                }
+                        )
                     }
                 }
                 UserAnnotation()
             }
             .mapStyle(.standard(elevation: .realistic))
             .ignoresSafeArea()
+            .onMapCameraChange(frequency: .continuous) { context in
+                visibleLatitudeDelta = context.region.span.latitudeDelta
+            }
             .task { await zoomToInitialRegion() }
+
+            mapEdgeBlur
 
             VStack {
                 HStack {
@@ -50,13 +79,39 @@ struct StampMapView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 60)
                 Spacer()
-                if locatedStamps.isEmpty {
-                    emptyHint
-                        .padding(.bottom, 48)
-                }
             }
         }
         .ignoresSafeArea()
+    }
+
+    private var mapEdgeBlur: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: 150)
+                .mask(
+                    LinearGradient(
+                        colors: [.black.opacity(0.70), .black.opacity(0.18), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            Spacer(minLength: 0)
+
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: 170)
+                .mask(
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.16), .black.opacity(0.62)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 
     private var closeButton: some View {
@@ -75,8 +130,8 @@ struct StampMapView: View {
                 .frame(width: 42, height: 42)
                 .background(
                     ZStack {
-                        Circle().fill(.ultraThinMaterial)
-                        Circle().fill(Color.white.opacity(0.18))
+                        Circle().fill(Color.white.opacity(0.72))
+                        Circle().fill(Color.white.opacity(0.22))
                     }
                 )
                 .overlay(
@@ -167,55 +222,139 @@ struct StampMapView: View {
         return MKCoordinateRegion(center: center, span: span)
     }
 
-    private var emptyHint: some View {
-        Text("Stamps with location will appear here.")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Color.black.opacity(0.65))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
-            )
+    private func stampGroupKey(for stamp: Memento) -> String {
+        guard let lat = stamp.latitude, let lon = stamp.longitude else {
+            return stamp.id.uuidString
+        }
+        let precision = 10_000.0
+        let roundedLat = (lat * precision).rounded() / precision
+        let roundedLon = (lon * precision).rounded() / precision
+        return "\(roundedLat),\(roundedLon)"
+    }
+
+    private func displayedStamp(for group: MapStampGroup) -> Memento {
+        let stamps = group.orderedStamps
+        guard !stamps.isEmpty else { return group.primaryStamp }
+        let idx = groupDisplayIndices[group.id] ?? 0
+        return stamps[wrappedIndex(idx, count: stamps.count)]
+    }
+
+    private func cycleStamp(in group: MapStampGroup, translation: CGFloat) {
+        guard group.count > 1, abs(translation) > 18 else { return }
+        let direction = translation < 0 ? 1 : -1
+        let current = groupDisplayIndices[group.id] ?? 0
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+            groupDisplayIndices[group.id] = wrappedIndex(current + direction, count: group.count)
+        }
+    }
+
+    private func wrappedIndex(_ index: Int, count: Int) -> Int {
+        let remainder = index % count
+        return remainder >= 0 ? remainder : remainder + count
     }
 }
 
-/// Small image tile that represents a stamp on the map. Mirrors the
-/// `map_reference.png` look: a square photo with a thin white border and a
-/// subtle drop shadow, slightly rotated for a hand-placed feel.
+private struct MapStampGroup: Identifiable {
+    let key: String
+    let stamps: [Memento]
+
+    var id: String { key }
+    var count: Int { stamps.count }
+    var orderedStamps: [Memento] {
+        stamps.sorted { $0.createdAt > $1.createdAt }
+    }
+    var primaryStamp: Memento {
+        orderedStamps.first ?? stamps[0]
+    }
+    var createdAt: Date { primaryStamp.createdAt }
+
+    var coordinate: CLLocationCoordinate2D {
+        let coords = stamps.compactMap { stamp -> CLLocationCoordinate2D? in
+            guard let lat = stamp.latitude, let lon = stamp.longitude else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+        guard !coords.isEmpty else {
+            return CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        }
+        let lat = coords.map(\.latitude).reduce(0, +) / Double(coords.count)
+        let lon = coords.map(\.longitude).reduce(0, +) / Double(coords.count)
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+}
+
+/// Small image tile that represents a stamp on the map. It reuses the same
+/// perforated postage shape as the cutter review, with a soft lifted shadow.
 private struct StampMapTile: View {
     let memento: Memento
+    let count: Int
+    let zoomScale: CGFloat
 
-    private let size: CGFloat = 52
+    private var hashSeed: UInt {
+        memento.id.uuidString.hashValue.magnitude
+    }
+
+    private var width: CGFloat {
+        CGFloat(44 + Int(hashSeed % 3) * 4) * zoomScale
+    }
+
+    private var height: CGFloat {
+        width / ((1024.0 / 1536.0) * 0.71 / 0.535)
+    }
 
     private var tilt: Double {
         // Deterministic per-stamp tilt so the same stamp doesn't jitter on
         // every map redraw.
-        let h = abs(memento.id.uuidString.hashValue)
-        return Double(h % 11) - 5      // -5° to +5°
+        Double(Int(hashSeed % 9)) - 4      // -4° to +4°
     }
 
     var body: some View {
-        ZStack {
-            if let ui = MementoStore.image(for: memento) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.gray.opacity(0.4))
-                    .frame(width: size, height: size)
+        let shape = PostageStampShape(bite: 4.2, spacing: 10.5)
+
+        ZStack(alignment: .topTrailing) {
+            ZStack {
+                if let ui = MementoStore.image(for: memento) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.4))
+                        .frame(width: width, height: height)
+                }
+            }
+            .clipShape(shape)
+            .background(
+                shape
+                    .fill(Color.black.opacity(0.12))
+                    .scaleEffect(1.035)
+                    .shadow(color: .black.opacity(0.24), radius: 7, x: 0, y: 5)
+            )
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.10),
+                        Color.clear,
+                        Color.black.opacity(0.12)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .clipShape(shape)
+                .allowsHitTesting(false)
+            )
+
+            if count > 1 {
+                Text("\(count)")
+                    .font(.system(size: 14 * zoomScale, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 25 * zoomScale, height: 25 * zoomScale)
+                    .background(Circle().fill(Color(red: 0.18, green: 0.55, blue: 1.0)))
+                    .overlay(Circle().stroke(Color.white.opacity(0.88), lineWidth: 1.2))
+                    .shadow(color: .black.opacity(0.18), radius: 4, x: 0, y: 2)
+                    .offset(x: 9 * zoomScale, y: -9 * zoomScale)
             }
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .stroke(Color.white, lineWidth: 2)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 4, x: 0, y: 3)
         .rotationEffect(.degrees(tilt))
     }
 }

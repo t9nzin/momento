@@ -6,6 +6,8 @@ struct MomentoApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .preferredColorScheme(.light)
+                .dynamicTypeSize(.medium)
         }
         .modelContainer(for: [Folder.self, Memento.self])
     }

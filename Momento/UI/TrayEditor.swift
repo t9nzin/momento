@@ -2,6 +2,21 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 
+enum SourceTab: String, CaseIterable, Identifiable {
+    case house, globe, calendar
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .house:
+            return "house"
+        case .globe:
+            return "map"
+        case .calendar:
+            return "calendar"
+        }
+    }
+}
+
 struct TrayEditor: View {
     enum Mode: String, CaseIterable, Identifiable {
         case boring = "Folder"
@@ -51,16 +66,14 @@ struct TrayEditor: View {
     @State private var navMorphProgress: CGFloat = 0
     @State private var showStampMap: Bool = false
 
-    private enum SourceTab: String, CaseIterable, Identifiable {
-        case house, globe, calendar
-        var id: String { rawValue }
-        var symbol: String { rawValue }
-    }
     @State private var sourceTab: SourceTab = .house
     @State private var sourceMorphProgress: CGFloat = 0
 
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
+    private static let sourceAccentColor = Color(red: 0.31, green: 0.48, blue: 0.96)
+    private static let glassButtonFill = Color.white.opacity(0.72)
+    private static let floatingPillFill = Color(red: 0.965, green: 0.965, blue: 0.970)
 
     // MARK: - Derived folder/stamp state
 
@@ -96,53 +109,9 @@ struct TrayEditor: View {
         ZStack {
             Color(red: 0.93, green: 0.93, blue: 0.94)
                 .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                HStack(alignment: .top, spacing: 18) {
-                    ForEach(Array(folders.enumerated()), id: \.element.id) { idx, folder in
-                        folderCardView(idx: idx, folder: folder)
-                    }
-                }
-                .offset(x: CGFloat(1 - activeFolderIndex) * 178)
-                .animation(.spring(response: 0.26, dampingFraction: 0.86), value: activeFolderIndex)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 12)
-                        .onEnded { value in
-                            let threshold: CGFloat = 40
-                            let previous = activeFolderIndex
-                            let maxIndex = max(folders.count - 1, 0)
-                            var next = previous
-                            if value.translation.width < -threshold {
-                                next = min(previous + 1, maxIndex)
-                            } else if value.translation.width > threshold {
-                                next = max(previous - 1, 0)
-                            }
-                            guard next != previous else { return }
-                            // Collapse the old folder immediately so the new
-                            // expansion reads cleanly after the slide.
-                            withAnimation(.easeOut(duration: 0.12)) {
-                                expandedFolderIndex = -1
-                            }
-                            activeFolderIndex = next
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                                withAnimation(.spring(response: 0.45, dampingFraction: 0.62)) {
-                                    expandedFolderIndex = next
-                                }
-                            }
-                        }
-                )
-                .padding(.bottom, 12)
-            }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            libraryHeader
-                .padding(.horizontal, 18)
-                .padding(.top, 0)
-                .padding(.bottom, 4)
-                .offset(y: 4)
+            topLibraryArea
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             trayContent
@@ -188,6 +157,56 @@ struct TrayEditor: View {
         }
     }
 
+    private var topLibraryArea: some View {
+        VStack(spacing: 16) {
+            libraryHeader
+                .padding(.horizontal, 18)
+                .frame(height: 42)
+                .padding(.top, 4)
+                .offset(y: -4)
+
+            folderCarousel
+        }
+        .padding(.bottom, 10)
+    }
+
+    private var folderCarousel: some View {
+        HStack(alignment: .top, spacing: 18) {
+            ForEach(Array(folders.enumerated()), id: \.element.id) { idx, folder in
+                folderCardView(idx: idx, folder: folder)
+            }
+        }
+        .offset(x: CGFloat(1 - activeFolderIndex) * 178)
+        .animation(.spring(response: 0.26, dampingFraction: 0.86), value: activeFolderIndex)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onEnded { value in
+                    let threshold: CGFloat = 40
+                    let previous = activeFolderIndex
+                    let maxIndex = max(folders.count - 1, 0)
+                    var next = previous
+                    if value.translation.width < -threshold {
+                        next = min(previous + 1, maxIndex)
+                    } else if value.translation.width > threshold {
+                        next = max(previous - 1, 0)
+                    }
+                    guard next != previous else { return }
+                    // Collapse the old folder immediately so the new
+                    // expansion reads cleanly after the slide.
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        expandedFolderIndex = -1
+                    }
+                    activeFolderIndex = next
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.62)) {
+                            expandedFolderIndex = next
+                        }
+                    }
+                }
+        )
+    }
+
     private func syncCenteredFolder() {
         guard let folder = centeredFolder else {
             stampOrder = []
@@ -215,6 +234,7 @@ struct TrayEditor: View {
         ZStack {
             Text("Library")
                 .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.black)
             HStack {
                 headerCircleButton(systemName: "plus") { }
                 Spacer()
@@ -319,8 +339,8 @@ struct TrayEditor: View {
                 .frame(width: 42, height: 42)
                 .background(
                     ZStack {
-                        Circle().fill(.ultraThinMaterial)
-                        Circle().fill(Color.white.opacity(0.18))
+                        Circle().fill(Self.glassButtonFill)
+                        Circle().fill(Color.white.opacity(0.22))
                     }
                 )
                 .overlay(
@@ -472,13 +492,17 @@ struct TrayEditor: View {
     // MARK: - Canvas
 
     private var canvas: some View {
+        canvasView(stamps: currentStamps)
+    }
+
+    private func canvasView(stamps: [Memento]) -> some View {
         ZStack {
             dottedBackground
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             ZStack {
-                ForEach(currentStamps, id: \.id) { stamp in
-                    cardView(for: stamp)
+                ForEach(visibleCanvasStamps(in: stamps), id: \.id) { stamp in
+                    cardView(for: stamp, in: stamps)
                 }
             }
             .id(stampSwapToken)
@@ -512,8 +536,19 @@ struct TrayEditor: View {
         )
     }
 
-    private func slotPose(for cardID: UUID) -> SlotPose {
-        let stamps = currentStamps
+    private func visibleCanvasStamps(in stamps: [Memento]) -> [Memento] {
+        guard !stamps.isEmpty else { return [] }
+        guard let activeID = activeCardID,
+              let activeIdx = stamps.firstIndex(where: { $0.id == activeID }) else {
+            return Array(stamps.prefix(5))
+        }
+
+        let lower = max(activeIdx - 2, 0)
+        let upper = min(activeIdx + 2, stamps.count - 1)
+        return Array(stamps[lower...upper])
+    }
+
+    private func slotPose(for cardID: UUID, in stamps: [Memento]) -> SlotPose {
         guard let activeID = activeCardID,
               let activeIdx = stamps.firstIndex(where: { $0.id == activeID }),
               let cardIdx = stamps.firstIndex(where: { $0.id == cardID }) else {
@@ -602,10 +637,9 @@ struct TrayEditor: View {
     }
 
     @ViewBuilder
-    private func cardView(for stamp: Memento) -> some View {
-        let stamps = currentStamps
+    private func cardView(for stamp: Memento, in stamps: [Memento]) -> some View {
         let isActive = stamp.id == activeCardID
-        let pose = slotPose(for: stamp.id)
+        let pose = slotPose(for: stamp.id, in: stamps)
         let liveX = pose.offset.width + swipeOffset
         let diff: Int = {
             guard let activeID = activeCardID,
@@ -753,11 +787,24 @@ struct TrayEditor: View {
         .padding(.vertical, 11)
         .background(
             Capsule()
-                .fill(.ultraThinMaterial)
+                .fill(Self.floatingPillFill)
                 .overlay(
-                    Capsule().stroke(Color.black.opacity(0.04), lineWidth: 0.5)
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.62),
+                                    Color.white.opacity(0.18)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 )
-                .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 4)
+                .overlay(
+                    Capsule().stroke(Color.black.opacity(0.035), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.045), radius: 8, x: 0, y: 3)
         )
     }
 
@@ -795,11 +842,10 @@ struct TrayEditor: View {
     // MARK: - Bottom bar
 
     private var bottomBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             sourcePill
                 .frame(maxWidth: .infinity)
             saveButton
-                .frame(maxWidth: .infinity)
         }
     }
 
@@ -816,20 +862,12 @@ struct TrayEditor: View {
 
             ZStack(alignment: .topLeading) {
                 Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Capsule().fill(Color.white.opacity(0.18)))
+                    .fill(Color.white)
                     .overlay(
                         Capsule()
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 2)
+                    .shadow(color: .black.opacity(0.05), radius: 7, x: 0, y: 2)
 
                 sourceMovingBubble(width: segW, height: segH)
                     .offset(x: bubbleX, y: inset)
@@ -839,8 +877,8 @@ struct TrayEditor: View {
                     ForEach(SourceTab.allCases) { tab in
                         let selected = (sourceTab == tab)
                         Image(systemName: tab.symbol)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(selected ? Color.black.opacity(0.75) : Color.black.opacity(0.45))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(selected ? Self.sourceAccentColor : Color.black.opacity(0.42))
                             .animation(.easeInOut(duration: 0.22), value: sourceTab)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .contentShape(Rectangle())
@@ -865,57 +903,35 @@ struct TrayEditor: View {
                 }
             }
         }
-        if tab == .globe { showStampMap = true }
+
+        if tab == .globe {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+                guard sourceTab == .globe else { return }
+                showStampMap = true
+            }
+        }
     }
 
     private func sourceMovingBubble(width: CGFloat, height: CGFloat) -> some View {
-        let m = Double(sourceMorphProgress)
-        return Capsule()
-            .fill(Color.black.opacity(0.10))
-            .frame(width: width, height: height)
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.75),
-                                Color.white.opacity(0.15),
-                                Color.clear
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.6
-                    )
-            )
-            .overlay(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: width, height: height)
-                    .opacity(0.55 * m)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: Color.black.opacity(0.08 + 0.06 * m),
-                    radius: 4 + 4 * sourceMorphProgress,
-                    x: 0,
-                    y: 2 + 1 * sourceMorphProgress)
-            .scaleEffect(x: 1.0 + 0.08 * sourceMorphProgress,
-                         y: 1.0 - 0.06 * sourceMorphProgress)
-            .blur(radius: 0.5 * sourceMorphProgress)
-            .opacity(1.0 - 0.10 * m)
+        SourceMovingBubble(
+            width: width,
+            height: height,
+            progress: sourceMorphProgress,
+            accentColor: Self.sourceAccentColor
+        )
     }
 
     private var saveButton: some View {
         Button(action: handleSave) {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                Text("New Stamp")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .bold))
+                Text("Stamp")
+                    .font(.system(size: 15, weight: .semibold))
             }
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 24)
+            .frame(height: 44)
             .background(Capsule().fill(Color.black))
             .opacity(showStampPunch ? 0.55 : 1.0)
         }
@@ -929,6 +945,58 @@ struct TrayEditor: View {
         // internally so the cover never blocks waiting for hardware.
         sharedCamera.requestAuthorizationAndStart()
         showStampPunch = true
+    }
+}
+
+private struct SourceMovingBubble: View {
+    let width: CGFloat
+    let height: CGFloat
+    let progress: CGFloat
+    let accentColor: Color
+
+    private var progressDouble: Double {
+        Double(progress)
+    }
+
+    var body: some View {
+        Capsule()
+            .fill(accentColor.opacity(0.12))
+            .frame(width: width, height: height)
+            .overlay(border)
+            .overlay(sheen)
+            .shadow(
+                color: Color.black.opacity(0.08 + 0.06 * progressDouble),
+                radius: 4 + 4 * progress,
+                x: 0,
+                y: 2 + progress
+            )
+            .scaleEffect(x: 1.0 + 0.08 * progress, y: 1.0 - 0.06 * progress)
+            .blur(radius: 0.5 * progress)
+            .opacity(1.0 - 0.10 * progressDouble)
+    }
+
+    private var border: some View {
+        Capsule()
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.80),
+                        accentColor.opacity(0.12),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 0.6
+            )
+    }
+
+    private var sheen: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.28))
+            .frame(width: width, height: height)
+            .opacity(0.55 * progressDouble)
+            .allowsHitTesting(false)
     }
 }
 

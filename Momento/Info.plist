@@ -26,6 +26,8 @@
     <string>Momento records the location of each stamp so you can revisit your captures on a map.</string>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>UIUserInterfaceStyle</key>
+    <string>Light</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>armv7</string>
