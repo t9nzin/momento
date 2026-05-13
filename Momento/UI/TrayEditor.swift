@@ -155,6 +155,9 @@ struct TrayEditor: View {
         .onChange(of: folders.count) { _, _ in
             syncCenteredFolder()
         }
+        .onChange(of: centeredFolder?.stamps.map(\.id) ?? []) { _, _ in
+            syncCenteredFolder()
+        }
         .fullScreenCover(isPresented: $showStampPunch) {
             if let folder = centeredFolder {
                 StampPunchView(folder: folder, camera: sharedCamera)
@@ -180,19 +183,20 @@ struct TrayEditor: View {
             activeCardID = nil
             return
         }
+        let newOrder = folder.stamps
+            .sorted { $0.createdAt < $1.createdAt }
+            .map(\.id)
         withAnimation(.easeInOut(duration: 0.30)) {
-            stampOrder = folder.stamps
-                .sorted { $0.createdAt < $1.createdAt }
-                .map(\.id)
+            stampOrder = newOrder
             stampSwapToken = UUID()
         }
-        let midIdx = stampOrder.count / 2
-        if let active = activeCardID, stampOrder.contains(active) {
+        let midIdx = newOrder.count / 2
+        if let active = activeCardID, newOrder.contains(active) {
             // keep existing selection
         } else {
-            activeCardID = stampOrder.indices.contains(midIdx)
-                ? stampOrder[midIdx]
-                : stampOrder.first
+            activeCardID = newOrder.indices.contains(midIdx)
+                ? newOrder[midIdx]
+                : newOrder.first
         }
     }
 
