@@ -51,6 +51,14 @@ struct TrayEditor: View {
     @State private var navMorphProgress: CGFloat = 0
     @State private var showStampMap: Bool = false
 
+    private enum SourceTab: String, CaseIterable, Identifiable {
+        case house, globe, calendar
+        var id: String { rawValue }
+        var symbol: String { rawValue }
+    }
+    @State private var sourceTab: SourceTab = .house
+    @State private var sourceMorphProgress: CGFloat = 0
+
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
 
@@ -167,11 +175,14 @@ struct TrayEditor: View {
             StampMapView()
         }
         .onChange(of: showStampMap) { _, isShown in
-            // Snap the nav-pill bubble back to + when the map sheet closes so
-            // a follow-up tap on the globe will animate again.
             if !isShown && navTab == .globe {
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
                     navTab = .plus
+                }
+            }
+            if !isShown && sourceTab == .globe {
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) {
+                    sourceTab = .house
                 }
             }
         }
@@ -190,12 +201,12 @@ struct TrayEditor: View {
             stampOrder = newOrder
             stampSwapToken = UUID()
         }
-        let midIdx = newOrder.count / 2
+        let defaultIdx = newOrder.count >= 3 ? 1 : 0
         if let active = activeCardID, newOrder.contains(active) {
             // keep existing selection
         } else {
-            activeCardID = newOrder.indices.contains(midIdx)
-                ? newOrder[midIdx]
+            activeCardID = newOrder.indices.contains(defaultIdx)
+                ? newOrder[defaultIdx]
                 : newOrder.first
         }
     }
@@ -205,7 +216,7 @@ struct TrayEditor: View {
             Text("Library")
                 .font(.system(size: 17, weight: .semibold))
             HStack {
-                navPillBar
+                headerCircleButton(systemName: "plus") { }
                 Spacer()
                 headerCircleButton(systemName: "ellipsis") { }
             }
@@ -304,10 +315,26 @@ struct TrayEditor: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.75))
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(Color.white))
-                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .foregroundStyle(Color.black.opacity(0.78))
+                .frame(width: 42, height: 42)
+                .background(
+                    ZStack {
+                        Circle().fill(.ultraThinMaterial)
+                        Circle().fill(Color.white.opacity(0.18))
+                    }
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
+                        )
+                )
+                .shadow(color: .black.opacity(0.10), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -770,37 +797,112 @@ struct TrayEditor: View {
     private var bottomBar: some View {
         HStack(spacing: 10) {
             sourcePill
+                .frame(maxWidth: .infinity)
             saveButton
+                .frame(maxWidth: .infinity)
         }
     }
 
     private var sourcePill: some View {
-        HStack(spacing: 10) {
-            Text("May 11, 2026")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.55))
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let inset: CGFloat = 4
+            let segCount = CGFloat(SourceTab.allCases.count)
+            let segW = (totalW - inset * 2) / segCount
+            let segH = totalH - inset * 2
+            let activeIdx = SourceTab.allCases.firstIndex(of: sourceTab) ?? 0
+            let bubbleX = inset + CGFloat(activeIdx) * segW
 
-            Spacer(minLength: 4)
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(Color.white.opacity(0.18)))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.8
+                            )
+                    )
+                    .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 2)
 
-            HStack(spacing: 4) {
-                Text("tokyo")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.95))
-                Image(systemName: "globe")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.95))
+                sourceMovingBubble(width: segW, height: segH)
+                    .offset(x: bubbleX, y: inset)
+                    .animation(.spring(response: 0.46, dampingFraction: 0.62), value: sourceTab)
+
+                HStack(spacing: 0) {
+                    ForEach(SourceTab.allCases) { tab in
+                        let selected = (sourceTab == tab)
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selected ? Color.black.opacity(0.75) : Color.black.opacity(0.45))
+                            .animation(.easeInOut(duration: 0.22), value: sourceTab)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectSourceTab(tab) }
+                    }
+                }
+                .padding(inset)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            Capsule()
-                .fill(Color.white)
-                .overlay(
-                    Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
-        )
+        .frame(height: 44)
+    }
+
+    private func selectSourceTab(_ tab: SourceTab) {
+        if sourceTab != tab {
+            sourceTab = tab
+            withAnimation(.easeOut(duration: 0.22)) {
+                sourceMorphProgress = 1
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+                    sourceMorphProgress = 0
+                }
+            }
+        }
+        if tab == .globe { showStampMap = true }
+    }
+
+    private func sourceMovingBubble(width: CGFloat, height: CGFloat) -> some View {
+        let m = Double(sourceMorphProgress)
+        return Capsule()
+            .fill(Color.black.opacity(0.10))
+            .frame(width: width, height: height)
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.75),
+                                Color.white.opacity(0.15),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.6
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: width, height: height)
+                    .opacity(0.55 * m)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: Color.black.opacity(0.08 + 0.06 * m),
+                    radius: 4 + 4 * sourceMorphProgress,
+                    x: 0,
+                    y: 2 + 1 * sourceMorphProgress)
+            .scaleEffect(x: 1.0 + 0.08 * sourceMorphProgress,
+                         y: 1.0 - 0.06 * sourceMorphProgress)
+            .blur(radius: 0.5 * sourceMorphProgress)
+            .opacity(1.0 - 0.10 * m)
     }
 
     private var saveButton: some View {
@@ -808,11 +910,11 @@ struct TrayEditor: View {
             HStack(spacing: 4) {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .bold))
-                Text("Stamp")
+                Text("New Stamp")
                     .font(.system(size: 13, weight: .semibold))
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 22)
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(Capsule().fill(Color.black))
             .opacity(showStampPunch ? 0.55 : 1.0)
