@@ -59,29 +59,37 @@ struct StampMapView: View {
     }
 
     private var closeButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.78))
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Color.white))
-                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
-                .shadow(color: .black.opacity(0.10), radius: 6, x: 0, y: 2)
-        }
-        .buttonStyle(.plain)
+        glassCircleButton(systemName: "chevron.left") { dismiss() }
     }
 
     private var recenterButton: some View {
-        Button {
-            recenterOnUser()
-        } label: {
-            Image(systemName: "location.fill")
-                .font(.system(size: 14, weight: .semibold))
+        glassCircleButton(systemName: "location.fill") { recenterOnUser() }
+    }
+
+    private func glassCircleButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.78))
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Color.white))
-                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
-                .shadow(color: .black.opacity(0.10), radius: 6, x: 0, y: 2)
+                .frame(width: 42, height: 42)
+                .background(
+                    ZStack {
+                        Circle().fill(.ultraThinMaterial)
+                        Circle().fill(Color.white.opacity(0.18))
+                    }
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.75), Color.white.opacity(0.15), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.8
+                        )
+                )
+                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
