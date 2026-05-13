@@ -41,8 +41,6 @@ struct TrayEditor: View {
     private let shineDuration: TimeInterval = 0.7
     @State private var activeFolderIndex: Int = 1
     @State private var expandedFolderIndex: Int = 1
-    @State private var titleText = "cargoworld"
-    @State private var subtitleText = ""
     @State private var morphProgress: CGFloat = 0
 
     /// Local visual order of the centered folder's stamps. Tracks Send-to-back /
@@ -103,6 +101,11 @@ struct TrayEditor: View {
         let extras = folder.stamps.filter { !known.contains($0.id) }
             .sorted { $0.createdAt < $1.createdAt }
         return ordered + extras
+    }
+
+    private var activeStamp: Memento? {
+        guard let activeCardID else { return currentStamps.first }
+        return currentStamps.first { $0.id == activeCardID } ?? currentStamps.first
     }
 
     var body: some View {
@@ -602,7 +605,7 @@ struct TrayEditor: View {
         // enough to read as a soft swipe of light, with a slight upward tilt
         // matching the reference screenshots. Sweeps from below the card to
         // above it as progress goes 0→1.
-        let cardHeight: CGFloat = 168
+        let cardHeight: CGFloat = StampVisualMetrics.trayHeight
         let bandHeight: CGFloat = 68
         let bandWidth: CGFloat = 180
         let tilt: Angle = .degrees(-12)
@@ -650,12 +653,14 @@ struct TrayEditor: View {
             return cardIdx - activeIdx
         }()
         let baseOpacity: Double = abs(diff) > 2 ? 0 : (isActive ? 1.0 : 0.42)
+        let cardSize = StampVisualMetrics.traySize
+        let stampShape = PostageStampShape(bite: 4.8, spacing: 13.5)
 
         ZStack {
             cardImage(for: stamp)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 116, height: 168)
+                .frame(width: cardSize.width, height: cardSize.height)
                 .overlay {
                     if shineCardID == stamp.id {
                         TimelineView(.animation(minimumInterval: 1.0/60.0)) { ctx in
@@ -670,7 +675,19 @@ struct TrayEditor: View {
                         .allowsHitTesting(false)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .clipShape(stampShape)
+                .background {
+                    stampShape
+                        .fill(Color.black.opacity(isActive ? 0.08 : 0.035))
+                        .frame(width: cardSize.width, height: cardSize.height)
+                        .scaleEffect(1.015)
+                        .blur(radius: isActive ? 1.1 : 0.7)
+                        .offset(y: isActive ? 1.5 : 0.8)
+                }
+                .overlay {
+                    stampShape
+                        .stroke(Color.black.opacity(isActive ? 0.055 : 0.025), lineWidth: 0.5)
+                }
                 .shadow(color: .black.opacity(isActive ? 0.16 : 0.05),
                         radius: isActive ? 10 : 4,
                         x: 0, y: isActive ? 6 : 2)
@@ -678,7 +695,7 @@ struct TrayEditor: View {
 
             if isActive {
                 cornerHandles
-                    .frame(width: 116 + 6, height: 168 + 6)
+                    .frame(width: cardSize.width + 6, height: cardSize.height + 6)
             }
         }
         .scaleEffect(isActive ? 1.12 : 1.0)
@@ -826,17 +843,30 @@ struct TrayEditor: View {
 
     private var titleBlock: some View {
         VStack(spacing: 4) {
-            TextField("title", text: $titleText)
+            Text(activeStamp?.name ?? "Stamp")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(.black)
                 .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
-            TextField("add subtitle", text: $subtitleText)
+            Text(activeStampDateText)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.black.opacity(0.35))
                 .multilineTextAlignment(.center)
+                .lineLimit(1)
         }
         .padding(.horizontal, 24)
+    }
+
+    private var activeStampDateText: String {
+        guard let stamp = activeStamp else { return "" }
+        return stamp.createdAt.formatted(
+            .dateTime
+                .month(.abbreviated)
+                .day()
+                .year()
+        )
     }
 
     // MARK: - Bottom bar

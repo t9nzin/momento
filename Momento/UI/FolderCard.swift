@@ -107,7 +107,7 @@ struct FolderCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text("\(photoCount) \(photoCount == 1 ? "photo" : "photos")")
+                Text("\(photoCount) \(photoCount == 1 ? "stamp" : "stamps")")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(Color(red: 110/255, green: 110/255, blue: 115/255))
                     .padding(.horizontal, 9)

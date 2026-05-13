@@ -6,6 +6,13 @@ import CoreLocation
 import PhotosUI
 import UIKit
 
+enum StampVisualMetrics {
+    static let aspectRatio: CGFloat = 116.0 / 168.0
+    static let trayWidth: CGFloat = 116
+    static let trayHeight: CGFloat = trayWidth / aspectRatio
+    static let traySize = CGSize(width: trayWidth, height: trayHeight)
+}
+
 struct StampPunchView: View {
     let folder: Folder
     @ObservedObject var camera: CameraController
@@ -42,8 +49,7 @@ struct StampPunchView: View {
     private let cutterAspect: CGFloat = 1024.0 / 1536.0
     private let cutterWidthFraction: CGFloat = 0.86
     private let cutterVerticalCenterFraction: CGFloat = 0.46
-    private let innerWidthRatio: CGFloat = 0.71   // of cutter width
-    private let innerHeightRatio: CGFloat = 0.535 // of cutter height
+    private let innerWidthRatio: CGFloat = 0.66   // of cutter width
     private let innerYOffsetRatio: CGFloat = -0.03 // of cutter height (negative = up)
 
     var body: some View {
@@ -154,7 +160,7 @@ struct StampPunchView: View {
             y: baseCenter.y + liveOffset.height
         )
         let innerW = cutterW * innerWidthRatio
-        let innerH = cutterH * innerHeightRatio
+        let innerH = innerW / StampVisualMetrics.aspectRatio
         let innerCenter = CGPoint(x: cutterCenter.x,
                                   y: cutterCenter.y + cutterH * innerYOffsetRatio)
         let reviewCenter = CGPoint(x: size.width / 2,
