@@ -56,6 +56,7 @@ struct StampMapView: View {
                 }
             }
         }
+        .ignoresSafeArea()
     }
 
     private var closeButton: some View {

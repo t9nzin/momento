@@ -171,7 +171,7 @@ struct TrayEditor: View {
                 StampPunchView(folder: folder, camera: sharedCamera)
             }
         }
-        .sheet(isPresented: $showStampMap) {
+        .fullScreenCover(isPresented: $showStampMap) {
             StampMapView()
         }
         .onChange(of: showStampMap) { _, isShown in
