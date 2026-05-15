@@ -348,7 +348,10 @@ struct TrayEditor: View {
     }
 
     private func headerCircleButton(systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            action()
+        }) {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.78))
@@ -461,6 +464,7 @@ struct TrayEditor: View {
 
     private func selectMode(_ option: Mode) {
         guard mode != option else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
         mode = option
         withAnimation(.easeOut(duration: 0.22)) {
             morphProgress = 1
@@ -904,23 +908,22 @@ struct TrayEditor: View {
 
     private var saveButton: some View {
         Button(action: handleSave) {
-            HStack(spacing: 5) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .bold))
-                Text("Stamp")
+            HStack(spacing: 7) {
+                NewStampIcon()
+                    .frame(width: 22, height: 22)
+                Text("new")
                     .font(.system(size: 15, weight: .semibold))
             }
-            .foregroundStyle(.black)
+            .foregroundStyle(Color.black.opacity(0.42))
             .padding(.horizontal, 24)
             .frame(height: 44)
             .background(
                 Capsule()
-                    .fill(Self.floatingPillFill)
+                    .fill(Color.white)
                     .overlay(
-                        Capsule().stroke(Color.black.opacity(0.035), lineWidth: 0.5)
+                        Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.10), radius: 16, x: 0, y: 8)
-                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    .shadow(color: .black.opacity(0.05), radius: 7, x: 0, y: 2)
             )
             .opacity(showStampPunch ? 0.55 : 1.0)
         }
@@ -930,10 +933,44 @@ struct TrayEditor: View {
     private func handleSave() {
         guard centeredFolder != nil else { return }
         guard !showStampPunch else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // Present immediately. The camera handles permission + simulator
         // internally so the cover never blocks waiting for hardware.
         sharedCamera.requestAuthorizationAndStart()
         showStampPunch = true
+    }
+}
+
+private struct NewStampIcon: View {
+    var body: some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height)
+            let stampSide = size * 0.82
+            let badgeSize = size * 0.52
+            let stampShape = PostageStampShape(bite: stampSide * 0.075,
+                                               spacing: stampSide * 0.18)
+
+            ZStack {
+                stampShape
+                    .fill(Color.white)
+                    .overlay(stampShape.stroke(Color.black.opacity(0.42), lineWidth: 1.0))
+                    .frame(width: stampSide, height: stampSide)
+                    .shadow(color: .black.opacity(0.10), radius: 1.2, x: 0, y: 0.5)
+                    .offset(x: -size * 0.08, y: size * 0.08)
+
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.42))
+                    Image(systemName: "plus")
+                        .font(.system(size: badgeSize * 0.55, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: badgeSize, height: badgeSize)
+                .offset(x: size * 0.22, y: -size * 0.22)
+            }
+            .frame(width: size, height: size)
+            .position(x: geo.size.width / 2, y: geo.size.height / 2)
+        }
     }
 }
 
