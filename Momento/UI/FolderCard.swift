@@ -15,6 +15,8 @@ struct FolderCard: View {
     /// Override the three peek-photo assets. Order: [center, left, right].
     var photoAssets: [String]? = nil
 
+    @State private var bounceLift: CGFloat = 0
+
     private struct PhotoLayout {
         let asset: String
         let xDefault: CGFloat
@@ -51,44 +53,18 @@ struct FolderCard: View {
                 }
                 ZStack {
                     let folderYNudge = folderW * 0.06
-                    let folderJump = isExpanded ? -folderW * 0.05 : 0
+                    let openLift = isExpanded ? -folderW * 0.05 : 0
+                    let folderJump = openLift + bounceLift
                     let folderScale = isExpanded ? 1.05 : 1.0
+                    let glassW = folderW * 1.24
 
-                    SVGGlassFolderReplica(photoAssets: displayAssets, width: folderW * 1.24)
+                    SVGGlassFolderReplica(photoAssets: displayAssets, width: glassW)
                         .scaleEffect(folderScale)
                         .offset(y: folderYNudge + folderJump)
 
-                    if !isExpanded {
-                        ZStack {
-                            Image(leftSticker)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: folderW * 0.250 * leftStickerScale)
-                                .rotationEffect(.degrees(-8))
-                                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                                .offset(x: -folderW * 0.255, y: -folderW * 0.150)
-
-                            Image(rightSticker)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: folderW * 0.293 * rightStickerScale)
-                                .rotationEffect(.degrees(7))
-                                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                                .offset(x: folderW * 0.231, y: folderW * 0.013)
-
-                            if let extraSticker {
-                                Image(extraSticker)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: folderW * 0.250)
-                                    .rotationEffect(.degrees(-4))
-                                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                                    .offset(x: -folderW * 0.175, y: folderW * 0.120)
-                            }
-                        }
+                    coverStickerLayer(width: glassW)
                         .scaleEffect(folderScale)
                         .offset(y: folderYNudge + folderJump)
-                    }
                 }
                 .frame(width: w, height: geo.size.height, alignment: .center)
             }
@@ -112,11 +88,56 @@ struct FolderCard: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: isExpanded)
+        .animation(.spring(response: 0.50, dampingFraction: 0.58), value: isExpanded)
+        .onChange(of: isExpanded) { _, expanded in
+            guard expanded else {
+                bounceLift = 0
+                return
+            }
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.52)) {
+                bounceLift = -14
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
+                    bounceLift = 0
+                }
+            }
+        }
     }
 
-    private var folderWidthRatio: CGFloat { 0.72 }
+    private var folderWidthRatio: CGFloat { 0.648 }
     private var polaroidSize: CGFloat { 0.479 }
+
+    private func coverStickerLayer(width: CGFloat) -> some View {
+        ZStack {
+            Image(leftSticker)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: width * 0.205 * leftStickerScale)
+                .rotationEffect(.degrees(-8))
+                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+                .offset(x: -width * 0.225, y: width * 0.090)
+
+            Image(rightSticker)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: width * 0.235 * rightStickerScale)
+                .rotationEffect(.degrees(7))
+                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+                .offset(x: width * 0.230, y: width * 0.105)
+
+            if let extraSticker {
+                Image(extraSticker)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: width * 0.205)
+                    .rotationEffect(.degrees(-4))
+                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+                    .offset(x: -width * 0.115, y: width * 0.235)
+            }
+        }
+        .frame(width: width, height: width * 0.92)
+    }
 }
 
 private struct PeekPhoto: View {
@@ -186,6 +207,22 @@ private struct SVGGlassFolderReplica: View {
             .frame(width: backWidth, height: backHeight)
             .overlay {
                 SVGBackCoverShape()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color(red: 0.78, green: 0.83, blue: 0.83).opacity(0.20),
+                                      location: 0.00),
+                                .init(color: Color(red: 0.90, green: 0.94, blue: 0.94).opacity(0.11),
+                                      location: 0.22),
+                                .init(color: Color.clear, location: 0.46)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+            .overlay {
+                SVGBackCoverShape()
                     .stroke(Color.black.opacity(0.070), lineWidth: 1.15)
                     .blur(radius: 0.85)
                     .offset(y: 0.6)
@@ -219,7 +256,8 @@ private struct SVGGlassFolderReplica: View {
                 }
                 .frame(width: backWidth, height: backHeight)
             }
-            .shadow(color: .black.opacity(0.075), radius: 12, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.090), radius: 13, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.045), radius: 3, x: 0, y: 1)
             .offset(y: backYOffset)
     }
 
@@ -357,8 +395,8 @@ private struct SVGGlassFolderReplica: View {
                     .offset(x: -0.45, y: -0.50)
                     .clipShape(SVGFrontCoverShape())
             }
-            .shadow(color: .black.opacity(0.095), radius: 20, x: 0, y: 11)
-            .shadow(color: .black.opacity(0.035), radius: 3, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.115), radius: 21, x: 0, y: 11)
+            .shadow(color: .black.opacity(0.055), radius: 4, x: 0, y: 1)
             .shadow(color: .white.opacity(0.76), radius: 7, x: -2, y: -2)
             .offset(y: frontYOffset)
     }
@@ -390,7 +428,7 @@ private struct SVGGlassFolderReplica: View {
                                width: width * 0.48,
                                height: (width * 0.48) / StampVisualMetrics.aspectRatio)
                     .rotationEffect(.degrees(5))
-                    .offset(x: width * 0.16, y: width * 0.055)
+                    .offset(x: width * 0.16, y: width * 0.085)
                     .zIndex(2)
             }
         }
@@ -445,10 +483,10 @@ private struct GlassPeekStamp: View {
 private struct FolderTextureLines: View {
     var body: some View {
         VStack(spacing: 2.2) {
+            textureLine(opacity: 1.0)
             textureLine(opacity: 0.96)
-            textureLine(opacity: 0.82)
         }
-        .shadow(color: .black.opacity(0.045), radius: 1.2, x: 0, y: 0.8)
+        .shadow(color: .black.opacity(0.10), radius: 1.5, x: 0, y: 1.0)
     }
 
     private func textureLine(opacity: Double) -> some View {
@@ -457,7 +495,7 @@ private struct FolderTextureLines: View {
                 LinearGradient(
                     colors: [
                         Color.white.opacity(opacity),
-                        Color(red: 0.78, green: 0.83, blue: 0.82).opacity(0.12)
+                        Color(red: 0.68, green: 0.72, blue: 0.72).opacity(0.20)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -465,7 +503,7 @@ private struct FolderTextureLines: View {
             )
             .overlay {
                 Capsule()
-                    .stroke(Color.white.opacity(0.68), lineWidth: 0.35)
+                    .stroke(Color.white.opacity(0.92), lineWidth: 0.55)
             }
     }
 }

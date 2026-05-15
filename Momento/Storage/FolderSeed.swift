@@ -2,36 +2,26 @@ import Foundation
 import SwiftData
 
 enum FolderSeed {
-    private static let defaultStamps: [String] = [
-        "cardNoProblem",
-        "cardKassian",
-        "cardLandscape",
-        "cardText"
-    ]
-
     private struct SeedFolder {
         let name: String
         let leftSticker: String
         let rightSticker: String
-        let peekPhotos: [String]
         let stamps: [String]
+        var peekPhotos: [String] { Array(stamps.prefix(2)) }
     }
 
     private static let seeds: [SeedFolder] = [
         SeedFolder(name: "Italy 2025",
                    leftSticker: "ItalyFlag",
                    rightSticker: "Lemon",
-                   peekPhotos: ["it1", "it2", "it3"],
                    stamps: ["italyStamp1", "italyStamp2", "italyStamp3", "italyStamp4"]),
         SeedFolder(name: "Japan 2024",
                    leftSticker: "FlagSticker",
                    rightSticker: "JapanDecor",
-                   peekPhotos: [],
-                   stamps: defaultStamps),
+                   stamps: ["japanStamp1", "japanStamp2", "japanStamp3", "japanStamp4"]),
         SeedFolder(name: "Amsterdam 2024",
                    leftSticker: "Tulip",
                    rightSticker: "DutchFlag",
-                   peekPhotos: ["am1", "am2", "am3"],
                    stamps: ["amsStamp1", "amsStamp2", "amsStamp3", "amsStamp4"])
     ]
 
@@ -48,15 +38,20 @@ enum FolderSeed {
             for folder in existing {
                 guard let seed = seeds.first(where: { $0.name == folder.name }) else { continue }
                 let currentAssets = folder.stamps.compactMap { $0.assetName }
-                guard currentAssets != seed.stamps else { continue }
-                let userStamps = folder.stamps.filter { $0.assetName == nil }
-                let seededStamps = folder.stamps.filter { $0.assetName != nil }
-                for stamp in seededStamps { context.delete(stamp) }
-                folder.stamps = userStamps
-                for asset in seed.stamps {
-                    let stamp = Memento(name: asset, imageFilename: "", assetName: asset, folder: folder)
-                    context.insert(stamp)
-                    folder.stamps.append(stamp)
+                let needsStampRefresh = currentAssets != seed.stamps || folder.stamps.count != seed.stamps.count
+                let needsPeekRefresh = folder.peekPhotoAssets != seed.peekPhotos
+
+                if needsStampRefresh {
+                    for stamp in folder.stamps { context.delete(stamp) }
+                    folder.stamps = []
+                    for asset in seed.stamps {
+                        let stamp = Memento(name: asset, imageFilename: "", assetName: asset, folder: folder)
+                        context.insert(stamp)
+                        folder.stamps.append(stamp)
+                    }
+                }
+                if needsPeekRefresh {
+                    folder.peekPhotoAssets = seed.peekPhotos
                 }
             }
         }

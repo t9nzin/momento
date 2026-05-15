@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AVFoundation
+import UIKit
 
 enum SourceTab: String, CaseIterable, Identifiable {
     case house, globe, calendar
@@ -206,6 +207,7 @@ struct TrayEditor: View {
                         next = max(previous - 1, 0)
                     }
                     guard next != previous else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     // Collapse the old folder immediately so the new
                     // expansion reads cleanly after the slide.
                     withAnimation(.easeOut(duration: 0.12)) {
@@ -411,8 +413,8 @@ struct TrayEditor: View {
 
     // MARK: - Segmented control
 
-    private static let pillBaseColor    = Color(red:  83/255.0, green:  83/255.0, blue:  90/255.0)
-    private static let pillInactiveText = Color(red: 154/255.0, green: 154/255.0, blue: 159/255.0)
+    private static let pillBaseColor    = Color(red: 0.965, green: 0.965, blue: 0.970)
+    private static let pillInactiveText = Color(red: 110/255.0, green: 110/255.0, blue: 115/255.0)
     private static let pillActiveBubble = Color(red:   5/255.0, green:   5/255.0, blue:   5/255.0)
 
     private var segmentedControl: some View {
@@ -428,6 +430,11 @@ struct TrayEditor: View {
             ZStack(alignment: .topLeading) {
                 Capsule()
                     .fill(Self.pillBaseColor)
+                    .overlay(
+                        Capsule().stroke(Color.black.opacity(0.035), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.10), radius: 16, x: 0, y: 8)
+                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
 
                 movingBubble(width: segW, height: segH)
                     .offset(x: bubbleX, y: inset)
@@ -438,7 +445,7 @@ struct TrayEditor: View {
                         let selected = (mode == option)
                         Text(option.rawValue)
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(selected ? Color.white : Self.pillInactiveText)
+                            .foregroundStyle(selected ? Self.sourceAccentColor : Self.pillInactiveText)
                             .animation(.easeInOut(duration: 0.22), value: mode)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .contentShape(Rectangle())
@@ -449,7 +456,7 @@ struct TrayEditor: View {
             }
         }
         .frame(height: 40)
-        .frame(maxWidth: 240)
+        .frame(maxWidth: 200)
     }
 
     private func selectMode(_ option: Mode) {
@@ -466,41 +473,12 @@ struct TrayEditor: View {
     }
 
     private func movingBubble(width: CGFloat, height: CGFloat) -> some View {
-        let m = Double(morphProgress)
-        return Capsule()
-            .fill(Self.pillActiveBubble)
-            .frame(width: width, height: height)
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.32),
-                                Color.white.opacity(0.06),
-                                Color.clear
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.7
-                    )
-            )
-            .overlay(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: width, height: height)
-                    .opacity(0.42 * m)
-                    .blendMode(.plusLighter)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: Color.black.opacity(0.28 + 0.12 * m),
-                    radius: 6 + 6 * morphProgress,
-                    x: 0,
-                    y: 3 + 2 * morphProgress)
-            .scaleEffect(x: 1.0 + 0.08 * morphProgress,
-                         y: 1.0 - 0.06 * morphProgress)
-            .blur(radius: 0.7 * morphProgress)
-            .opacity(1.0 - 0.15 * m)
+        SourceMovingBubble(
+            width: width,
+            height: height,
+            progress: morphProgress,
+            accentColor: Self.sourceAccentColor
+        )
     }
 
     // MARK: - Canvas
@@ -544,6 +522,7 @@ struct TrayEditor: View {
                         swipeOffset = 0
                     }
                     if let newID = activeCardID, newID != previousID {
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                         triggerShine(for: newID)
                     }
                 }
@@ -752,7 +731,7 @@ struct TrayEditor: View {
             }
 
             Button(action: sendActiveCardToBack) {
-                Text("Stamp")
+                Text("Share")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.black)
             }
@@ -784,7 +763,8 @@ struct TrayEditor: View {
                 .overlay(
                     Capsule().stroke(Color.black.opacity(0.035), lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.045), radius: 8, x: 0, y: 3)
+                .shadow(color: .black.opacity(0.10), radius: 16, x: 0, y: 8)
+                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
     }
 
@@ -886,6 +866,7 @@ struct TrayEditor: View {
 
     private func selectSourceTab(_ tab: SourceTab) {
         if sourceTab != tab {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             sourceTab = tab
             withAnimation(.easeOut(duration: 0.22)) {
                 sourceMorphProgress = 1
@@ -929,10 +910,18 @@ struct TrayEditor: View {
                 Text("Stamp")
                     .font(.system(size: 15, weight: .semibold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.black)
             .padding(.horizontal, 24)
             .frame(height: 44)
-            .background(Capsule().fill(Color.black))
+            .background(
+                Capsule()
+                    .fill(Self.floatingPillFill)
+                    .overlay(
+                        Capsule().stroke(Color.black.opacity(0.035), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.10), radius: 16, x: 0, y: 8)
+                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+            )
             .opacity(showStampPunch ? 0.55 : 1.0)
         }
         .disabled(showStampPunch)
