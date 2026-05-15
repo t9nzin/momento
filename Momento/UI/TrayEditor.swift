@@ -12,7 +12,7 @@ enum SourceTab: String, CaseIterable, Identifiable {
         case .globe:
             return "map"
         case .calendar:
-            return "calendar"
+            return "square.grid.2x2"
         }
     }
 }
@@ -63,6 +63,7 @@ struct TrayEditor: View {
     @State private var navTab: NavTab = .plus
     @State private var navMorphProgress: CGFloat = 0
     @State private var showStampMap: Bool = false
+    @State private var showStampCalendar: Bool = false
 
     @State private var sourceTab: SourceTab = .house
     @State private var sourceMorphProgress: CGFloat = 0
@@ -146,6 +147,9 @@ struct TrayEditor: View {
         .fullScreenCover(isPresented: $showStampMap) {
             StampMapView()
         }
+        .fullScreenCover(isPresented: $showStampCalendar) {
+            StampCalendarView()
+        }
         .onChange(of: showStampMap) { _, isShown in
             if !isShown && navTab == .globe {
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
@@ -153,6 +157,13 @@ struct TrayEditor: View {
                 }
             }
             if !isShown && sourceTab == .globe {
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) {
+                    sourceTab = .house
+                }
+            }
+        }
+        .onChange(of: showStampCalendar) { _, isShown in
+            if !isShown && sourceTab == .calendar {
                 withAnimation(.spring(response: 0.46, dampingFraction: 0.62)) {
                     sourceTab = .house
                 }
@@ -654,7 +665,7 @@ struct TrayEditor: View {
         }()
         let baseOpacity: Double = abs(diff) > 2 ? 0 : (isActive ? 1.0 : 0.42)
         let cardSize = StampVisualMetrics.traySize
-        let stampShape = PostageStampShape(bite: 4.8, spacing: 13.5)
+        let stampShape = PostageStampShape(bite: 6.2, spacing: 15.0)
 
         ZStack {
             cardImage(for: stamp)
@@ -692,11 +703,6 @@ struct TrayEditor: View {
                         radius: isActive ? 10 : 4,
                         x: 0, y: isActive ? 6 : 2)
                 .opacity(baseOpacity)
-
-            if isActive {
-                cornerHandles
-                    .frame(width: cardSize.width + 6, height: cardSize.height + 6)
-            }
         }
         .scaleEffect(isActive ? 1.12 : 1.0)
         .rotationEffect(pose.rotation)
@@ -729,49 +735,6 @@ struct TrayEditor: View {
             }
         }
         .background(Color(red: 0.985, green: 0.985, blue: 0.99))
-    }
-
-    // MARK: - Selection corner handles
-
-    private var cornerHandles: some View {
-        GeometryReader { geo in
-            let s = geo.size
-            let length: CGFloat = 12
-            let thickness: CGFloat = 1.6
-            ZStack {
-                cornerBracket(length: length, thickness: thickness, corner: .topLeading)
-                    .position(x: 0, y: 0)
-                cornerBracket(length: length, thickness: thickness, corner: .topTrailing)
-                    .position(x: s.width, y: 0)
-                cornerBracket(length: length, thickness: thickness, corner: .bottomLeading)
-                    .position(x: 0, y: s.height)
-                cornerBracket(length: length, thickness: thickness, corner: .bottomTrailing)
-                    .position(x: s.width, y: s.height)
-            }
-        }
-    }
-
-    private func cornerBracket(length: CGFloat = 11, thickness: CGFloat = 1.6,
-                               corner: UnitPoint) -> some View {
-        let color = Color.black
-        return ZStack {
-            // horizontal arm
-            Rectangle()
-                .fill(color)
-                .frame(width: length, height: thickness)
-                .offset(
-                    x: (corner == .topLeading || corner == .bottomLeading) ? length/2 : -length/2,
-                    y: 0
-                )
-            // vertical arm
-            Rectangle()
-                .fill(color)
-                .frame(width: thickness, height: length)
-                .offset(
-                    x: 0,
-                    y: (corner == .topLeading || corner == .topTrailing) ? length/2 : -length/2
-                )
-        }
     }
 
     // MARK: - Floating control pill (Crop / Back / Front)
@@ -938,6 +901,13 @@ struct TrayEditor: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
                 guard sourceTab == .globe else { return }
                 showStampMap = true
+            }
+        }
+
+        if tab == .calendar {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+                guard sourceTab == .calendar else { return }
+                showStampCalendar = true
             }
         }
     }

@@ -334,7 +334,7 @@ private struct StampMapTile: View {
     }
 
     var body: some View {
-        let shape = PostageStampShape(bite: 4.2, spacing: 10.5)
+        let shape = PostageStampShape(bite: 5.0, spacing: 11.5)
 
         ZStack(alignment: .topTrailing) {
             stampLayer(shape: shape)

@@ -475,7 +475,7 @@ struct StampPunchView: View {
             return
         }
         let trimmed = stampName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalName = trimmed.isEmpty ? "Stamp" : trimmed
+        let finalName = trimmed.isEmpty ? nextUntitledStampName() : trimmed
         do {
             _ = try MementoStore.save(cgImage: cg,
                                       name: finalName,
@@ -487,6 +487,19 @@ struct StampPunchView: View {
         } catch {
             errorMessage = "Could not save: \(error.localizedDescription)"
         }
+    }
+
+    private func nextUntitledStampName() -> String {
+        let prefix = "Untitled "
+        let usedNumbers = folder.stamps.compactMap { stamp -> Int? in
+            guard stamp.name.lowercased().hasPrefix(prefix.lowercased()) else {
+                return nil
+            }
+            let suffix = stamp.name.dropFirst(prefix.count)
+            return Int(suffix.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        let next = (usedNumbers.max() ?? 0) + 1
+        return "Untitled \(String(format: "%02d", next))"
     }
 
     private func loadPhotoLibraryStamp(from item: PhotosPickerItem?) {
@@ -540,26 +553,39 @@ struct StampPunchView: View {
 
 /// A rectangle with semicircular "perforations" cut out around its perimeter.
 struct PostageStampShape: Shape {
-    var bite: CGFloat = 5
-    var spacing: CGFloat = 14
+    var bite: CGFloat = 7.2
+    var spacing: CGFloat = 17
 
     func path(in rect: CGRect) -> Path {
         var p = Path()
 
-        let countX = max(Int(rect.width / spacing), 1)
-        let countY = max(Int(rect.height / spacing), 1)
-        let stepX = rect.width / CGFloat(countX)
-        let stepY = rect.height / CGFloat(countY)
+        // Matches the physical cutter artwork: round, visible scallops with
+        // enough corner quiet zone to avoid skinny clipped slivers.
+        let radius = min(bite, spacing * 0.42, min(rect.width, rect.height) * 0.09)
+        let cornerMargin = max(radius * 1.7, spacing * 0.48)
+
+        func centers(from minValue: CGFloat, to maxValue: CGFloat) -> [CGFloat] {
+            let start = minValue + cornerMargin
+            let end = maxValue - cornerMargin
+            let available = end - start
+            guard available > radius * 2 else { return [] }
+
+            let count = max(Int((available / spacing).rounded()), 1)
+            let step = available / CGFloat(count)
+            return (0..<count).map { start + (CGFloat($0) + 0.5) * step }
+        }
+
+        let xCenters = centers(from: rect.minX, to: rect.maxX)
+        let yCenters = centers(from: rect.minY, to: rect.maxY)
 
         p.move(to: CGPoint(x: rect.minX, y: rect.minY))
 
-        // Top edge: left → right, dipping at each bite
-        for i in 0..<countX {
-            let cx = rect.minX + (CGFloat(i) + 0.5) * stepX
-            p.addLine(to: CGPoint(x: cx - bite, y: rect.minY))
+        // Top edge: left → right, leaving solid corners before the bites.
+        for cx in xCenters {
+            p.addLine(to: CGPoint(x: cx - radius, y: rect.minY))
             p.addArc(
                 center: CGPoint(x: cx, y: rect.minY),
-                radius: bite,
+                radius: radius,
                 startAngle: .degrees(180),
                 endAngle: .degrees(0),
                 clockwise: true
@@ -568,12 +594,11 @@ struct PostageStampShape: Shape {
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
 
         // Right edge: top → bottom
-        for j in 0..<countY {
-            let cy = rect.minY + (CGFloat(j) + 0.5) * stepY
-            p.addLine(to: CGPoint(x: rect.maxX, y: cy - bite))
+        for cy in yCenters {
+            p.addLine(to: CGPoint(x: rect.maxX, y: cy - radius))
             p.addArc(
                 center: CGPoint(x: rect.maxX, y: cy),
-                radius: bite,
+                radius: radius,
                 startAngle: .degrees(270),
                 endAngle: .degrees(90),
                 clockwise: true
@@ -582,12 +607,11 @@ struct PostageStampShape: Shape {
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
 
         // Bottom edge: right → left
-        for i in stride(from: countX - 1, through: 0, by: -1) {
-            let cx = rect.minX + (CGFloat(i) + 0.5) * stepX
-            p.addLine(to: CGPoint(x: cx + bite, y: rect.maxY))
+        for cx in xCenters.reversed() {
+            p.addLine(to: CGPoint(x: cx + radius, y: rect.maxY))
             p.addArc(
                 center: CGPoint(x: cx, y: rect.maxY),
-                radius: bite,
+                radius: radius,
                 startAngle: .degrees(0),
                 endAngle: .degrees(180),
                 clockwise: true
@@ -596,12 +620,11 @@ struct PostageStampShape: Shape {
         p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
 
         // Left edge: bottom → top
-        for j in stride(from: countY - 1, through: 0, by: -1) {
-            let cy = rect.minY + (CGFloat(j) + 0.5) * stepY
-            p.addLine(to: CGPoint(x: rect.minX, y: cy + bite))
+        for cy in yCenters.reversed() {
+            p.addLine(to: CGPoint(x: rect.minX, y: cy + radius))
             p.addArc(
                 center: CGPoint(x: rect.minX, y: cy),
-                radius: bite,
+                radius: radius,
                 startAngle: .degrees(90),
                 endAngle: .degrees(270),
                 clockwise: true
