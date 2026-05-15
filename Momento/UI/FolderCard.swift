@@ -205,8 +205,9 @@ private struct SVGGlassFolderReplica: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1.15
+                        lineWidth: 5.8
                     )
+                    .clipShape(SVGBackCoverShape())
             }
             // Extend the visible region down so the right curve of the back
             // cover reaches the front cover instead of leaving a gap.
@@ -333,14 +334,15 @@ private struct SVGGlassFolderReplica: View {
                         LinearGradient(
                             colors: [
                                 Color.white.opacity(0.98),
-                                Color.white.opacity(0.76),
-                                Color.black.opacity(0.075)
+                                Color.white.opacity(0.92),
+                                Color.white.opacity(0.50)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1.25
+                        lineWidth: 1.65
                     )
+                    .clipShape(SVGFrontCoverShape())
             }
             .overlay {
                 SVGFrontCoverShape()
@@ -350,9 +352,10 @@ private struct SVGGlassFolderReplica: View {
             }
             .overlay {
                 SVGFrontCoverShape()
-                    .stroke(Color.white.opacity(0.74), lineWidth: 0.85)
-                    .blur(radius: 0.25)
-                    .offset(x: -0.5, y: -0.55)
+                    .stroke(Color.white.opacity(0.96), lineWidth: 1.15)
+                    .blur(radius: 0.18)
+                    .offset(x: -0.45, y: -0.50)
+                    .clipShape(SVGFrontCoverShape())
             }
             .shadow(color: .black.opacity(0.095), radius: 20, x: 0, y: 11)
             .shadow(color: .black.opacity(0.035), radius: 3, x: 0, y: 1)
@@ -376,7 +379,7 @@ private struct SVGGlassFolderReplica: View {
                                width: width * 0.46,
                                height: (width * 0.46) / StampVisualMetrics.aspectRatio)
                     .rotationEffect(.degrees(-7))
-                    .offset(x: -width * 0.20, y: -width * 0.02)
+                    .offset(x: -width * 0.16, y: -width * 0.02)
                     .zIndex(1)
             }
 
