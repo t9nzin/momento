@@ -1,5 +1,32 @@
 import SwiftUI
 
+/// A user-placed decoration sticker on a folder cover. Coordinates are
+/// normalized to the folder's `glassW` (interior body width) so the same
+/// values render proportionally at any folder card size: (0,0) = center,
+/// (±0.5, ±0.5) ≈ edges of the folder body.
+struct PlacedSticker: Identifiable, Equatable {
+    let id: UUID
+    var asset: String
+    var normX: CGFloat
+    var normY: CGFloat
+    var rotation: Double
+    var scale: CGFloat
+
+    init(id: UUID = UUID(),
+         asset: String,
+         normX: CGFloat,
+         normY: CGFloat,
+         rotation: Double = 0,
+         scale: CGFloat = 1.0) {
+        self.id = id
+        self.asset = asset
+        self.normX = normX
+        self.normY = normY
+        self.rotation = rotation
+        self.scale = scale
+    }
+}
+
 /// Home-screen folder card. Layout mirrors the Framer "Photos Folder"
 /// component pixel-for-pixel relative to a 188×190 folder. Tapping the card
 /// toggles between Default and Hover variants — polaroids fan outward.
@@ -14,6 +41,8 @@ struct FolderCard: View {
     var isExpanded: Bool = false
     /// Override the three peek-photo assets. Order: [center, left, right].
     var photoAssets: [String]? = nil
+    var decorations: [PlacedSticker] = []
+    var showTitle: Bool = true
 
     @State private var bounceLift: CGFloat = 0
 
@@ -65,26 +94,32 @@ struct FolderCard: View {
                     coverStickerLayer(width: glassW)
                         .scaleEffect(folderScale)
                         .offset(y: folderYNudge + folderJump)
+
+                    decorationLayer(glassW: glassW)
+                        .scaleEffect(folderScale)
+                        .offset(y: folderYNudge + folderJump)
                 }
                 .frame(width: w, height: geo.size.height, alignment: .center)
             }
             .aspectRatio(1.25, contentMode: .fit)
 
-            VStack(spacing: 5) {
-                Text(title)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            if showTitle {
+                VStack(spacing: 5) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-                Text("\(photoCount) \(photoCount == 1 ? "stamp" : "stamps")")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(Color(red: 110/255, green: 110/255, blue: 115/255))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 230/255, green: 230/255, blue: 232/255), in: Capsule())
+                    Text("\(photoCount) \(photoCount == 1 ? "stamp" : "stamps")")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color(red: 110/255, green: 110/255, blue: 115/255))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Color(red: 230/255, green: 230/255, blue: 232/255), in: Capsule())
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -107,6 +142,22 @@ struct FolderCard: View {
 
     private var folderWidthRatio: CGFloat { 0.648 }
     private var polaroidSize: CGFloat { 0.479 }
+
+    private func decorationLayer(glassW: CGFloat) -> some View {
+        ZStack {
+            ForEach(decorations) { sticker in
+                Image(sticker.asset)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: glassW * 0.20 * sticker.scale)
+                    .rotationEffect(.degrees(sticker.rotation))
+                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+                    .offset(x: sticker.normX * glassW, y: sticker.normY * glassW)
+            }
+        }
+        .frame(width: glassW, height: glassW * 0.92)
+        .allowsHitTesting(false)
+    }
 
     private func coverStickerLayer(width: CGFloat) -> some View {
         ZStack {

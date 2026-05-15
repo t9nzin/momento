@@ -69,6 +69,26 @@ struct TrayEditor: View {
     @State private var sourceTab: SourceTab = .house
     @State private var sourceMorphProgress: CGFloat = 0
 
+    // MARK: - Folder decoration state
+
+    private static let stickerPaletteAssets: [String] = [
+        "FlagSticker", "ToriiSticker", "JapanDecor",
+        "Lemon", "Tulip", "DutchFlag", "ItalyFlag"
+    ]
+
+    /// Decorations placed on each folder, keyed by folder id. In-session only.
+    @State private var decorationsByFolder: [UUID: [PlacedSticker]] = [:]
+    /// Asset + finger location while dragging a sticker out of the palette.
+    @State private var paletteDrag: (asset: String, location: CGPoint)? = nil
+    /// Currently-dragged placed sticker id and its live finger location.
+    @State private var placedDrag: (id: UUID, location: CGPoint)? = nil
+    /// Frames captured via PreferenceKey in the editor coordinate space.
+    @State private var canvasRect: CGRect = .zero
+    @State private var trashRect: CGRect = .zero
+    @State private var trashHot: Bool = false
+
+    private static let editorCoordSpace = "trayEditorSpace"
+
     private let trayCorner: CGFloat = 36
     private let canvasHeight: CGFloat = 240
     private static let sourceAccentColor = Color(red: 0.31, green: 0.48, blue: 0.96)
@@ -90,9 +110,22 @@ struct TrayEditor: View {
             leftSticker: folder.leftStickerAsset,
             rightSticker: folder.rightStickerAsset,
             isExpanded: idx == expandedFolderIndex,
-            photoAssets: peeks
+            photoAssets: peeks,
+            decorations: decorationsByFolder[folder.id] ?? []
         )
         .frame(width: 160)
+    }
+
+    private var currentDecorations: [PlacedSticker] {
+        guard let folder = centeredFolder else { return [] }
+        return decorationsByFolder[folder.id] ?? []
+    }
+
+    private func updateCurrentDecorations(_ transform: (inout [PlacedSticker]) -> Void) {
+        guard let folder = centeredFolder else { return }
+        var arr = decorationsByFolder[folder.id] ?? []
+        transform(&arr)
+        decorationsByFolder[folder.id] = arr
     }
 
     private var currentStamps: [Memento] {
@@ -390,19 +423,240 @@ struct TrayEditor: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 16)
 
-            canvas
+            canvasArea
                 .padding(.horizontal, 16)
                 .padding(.bottom, 14)
 
-            floatingControlPill
-                .padding(.bottom, 18)
-
-            titleBlock
-                .padding(.bottom, 16)
+            middleControlsSection
+                .frame(height: 138)
 
             bottomBar
                 .padding(.horizontal, 14)
                 .padding(.bottom, 18)
+        }
+        .coordinateSpace(name: Self.editorCoordSpace)
+        .onPreferenceChange(CanvasRectKey.self) { canvasRect = $0 }
+        .onPreferenceChange(TrashRectKey.self) { trashRect = $0 }
+        .overlay(alignment: .topLeading) { dragGhostOverlay }
+    }
+
+    @ViewBuilder
+    private var canvasArea: some View {
+        if mode == .boring {
+            folderDecoratingCanvas
+        } else {
+            canvas
+        }
+    }
+
+    private var folderDecoratingCanvas: some View {
+        ZStack {
+            dottedBackground
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            if let folder = centeredFolder {
+                FolderCard(
+                    title: folder.name,
+                    photoCount: folder.stamps.count,
+                    leftSticker: folder.leftStickerAsset,
+                    rightSticker: folder.rightStickerAsset,
+                    isExpanded: false,
+                    photoAssets: folder.peekPhotoAssets.isEmpty ? nil : folder.peekPhotoAssets,
+                    decorations: currentDecorations,
+                    showTitle: false
+                )
+                .frame(width: 280, height: 224)
+                .overlay(placedStickerInteractionLayer)
+            }
+        }
+        .frame(height: canvasHeight)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .preference(key: CanvasRectKey.self,
+                                value: geo.frame(in: .named(Self.editorCoordSpace)))
+            }
+        )
+    }
+
+    /// Hit-targets for already-placed stickers, sized to match the FolderCard
+    /// decoration overlay so dragging picks the right sticker.
+    private var placedStickerInteractionLayer: some View {
+        GeometryReader { geo in
+            // FolderCard inner card width = geo.width; glassW per FolderCard's
+            // own math = w * 0.648 * 1.24.
+            let glassW = geo.size.width * 0.648 * 1.24
+            let folderYNudge = geo.size.width * 0.648 * 0.06
+            ZStack {
+                ForEach(currentDecorations) { sticker in
+                    Color.clear
+                        .frame(width: glassW * 0.20 * sticker.scale,
+                               height: glassW * 0.20 * sticker.scale)
+                        .contentShape(Rectangle())
+                        .offset(x: sticker.normX * glassW,
+                                y: sticker.normY * glassW + folderYNudge)
+                        .gesture(placedStickerDragGesture(for: sticker, glassW: glassW, folderYNudge: folderYNudge))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    private func placedStickerDragGesture(for sticker: PlacedSticker,
+                                          glassW: CGFloat,
+                                          folderYNudge: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.editorCoordSpace))
+            .onChanged { value in
+                placedDrag = (sticker.id, value.location)
+                trashHot = trashRect.contains(value.location)
+                let canvasCenter = CGPoint(x: canvasRect.midX, y: canvasRect.midY)
+                let nx = (value.location.x - canvasCenter.x) / max(glassW, 1)
+                let ny = (value.location.y - canvasCenter.y - folderYNudge) / max(glassW, 1)
+                updateCurrentDecorations { arr in
+                    if let i = arr.firstIndex(where: { $0.id == sticker.id }) {
+                        arr[i].normX = nx
+                        arr[i].normY = ny
+                    }
+                }
+            }
+            .onEnded { value in
+                if trashRect.contains(value.location) {
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    updateCurrentDecorations { arr in
+                        arr.removeAll { $0.id == sticker.id }
+                    }
+                }
+                placedDrag = nil
+                trashHot = false
+            }
+    }
+
+    // MARK: - Middle controls section (constant height to keep tray stable)
+
+    @ViewBuilder
+    private var middleControlsSection: some View {
+        if mode == .boring {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                decoratingControls
+                    .padding(.horizontal, 14)
+                Spacer(minLength: 0)
+            }
+        } else {
+            VStack(spacing: 0) {
+                floatingControlPill
+                    .padding(.bottom, 18)
+                titleBlock
+                    .padding(.bottom, 16)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: - Decorating controls (palette + trash)
+
+    private var decoratingControls: some View {
+        HStack(spacing: 12) {
+            stickerPalette
+            trashZone
+        }
+    }
+
+    private var stickerPalette: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(Self.stickerPaletteAssets, id: \.self) { asset in
+                    paletteStickerButton(asset: asset)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .frame(height: 72)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Self.floatingPillFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
+        )
+    }
+
+    private func paletteStickerButton(asset: String) -> some View {
+        Image(asset)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 46, height: 46)
+            .opacity(paletteDrag?.asset == asset ? 0.35 : 1.0)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.editorCoordSpace))
+                    .onChanged { value in
+                        if paletteDrag == nil {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                        paletteDrag = (asset, value.location)
+                    }
+                    .onEnded { value in
+                        defer { paletteDrag = nil }
+                        guard canvasRect.contains(value.location) else { return }
+                        // FolderCard at the canvas is 280 wide → glassW = 280*0.648*1.24
+                        let cardW: CGFloat = 280
+                        let glassW = cardW * 0.648 * 1.24
+                        let folderYNudge = cardW * 0.648 * 0.06
+                        let canvasCenter = CGPoint(x: canvasRect.midX, y: canvasRect.midY)
+                        let nx = (value.location.x - canvasCenter.x) / glassW
+                        let ny = (value.location.y - canvasCenter.y - folderYNudge) / glassW
+                        let placed = PlacedSticker(
+                            asset: asset,
+                            normX: max(min(nx, 0.55), -0.55),
+                            normY: max(min(ny, 0.55), -0.55),
+                            rotation: Double.random(in: -10...10)
+                        )
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        updateCurrentDecorations { $0.append(placed) }
+                    }
+            )
+    }
+
+    private var trashZone: some View {
+        ZStack {
+            Circle()
+                .fill(trashHot ? Color.red.opacity(0.18) : Color.white)
+                .overlay(
+                    Circle().stroke(trashHot ? Color.red.opacity(0.7) : Color.black.opacity(0.08),
+                                    lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
+
+            Image(systemName: "trash")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(trashHot ? Color.red : Color.black.opacity(0.55))
+                .scaleEffect(trashHot ? 1.15 : 1.0)
+        }
+        .frame(width: 56, height: 56)
+        .animation(.spring(response: 0.28, dampingFraction: 0.7), value: trashHot)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .preference(key: TrashRectKey.self,
+                                value: geo.frame(in: .named(Self.editorCoordSpace)))
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var dragGhostOverlay: some View {
+        if let drag = paletteDrag {
+            Image(drag.asset)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 64, height: 64)
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+                .position(drag.location)
+                .allowsHitTesting(false)
         }
     }
 
@@ -1023,6 +1277,20 @@ private struct SourceMovingBubble: View {
             .frame(width: width, height: height)
             .opacity(0.55 * progressDouble)
             .allowsHitTesting(false)
+    }
+}
+
+private struct CanvasRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct TrashRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
 
