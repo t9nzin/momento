@@ -30,6 +30,14 @@ struct TrayEditor: View {
         let rotation: Angle
     }
 
+    private struct PaletteDragState {
+        let asset: String
+        let startLocation: CGPoint
+        let startGlobalLocation: CGPoint
+        var location: CGPoint
+        var globalLocation: CGPoint
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Folder.order) private var folders: [Folder]
 
@@ -76,15 +84,22 @@ struct TrayEditor: View {
         "Lemon", "Tulip", "DutchFlag", "ItalyFlag"
     ]
 
-    /// Decorations placed on each folder, keyed by folder id. In-session only.
-    @State private var decorationsByFolder: [UUID: [PlacedSticker]] = [:]
+    /// Immediate UI cache for folder decorations. SwiftData persists the same
+    /// array, but this keeps drag/drop feedback independent of model refreshes.
+    @State private var decorationCache: [UUID: [PlacedSticker]] = [:]
     /// Asset + finger location while dragging a sticker out of the palette.
-    @State private var paletteDrag: (asset: String, location: CGPoint)? = nil
-    /// Currently-dragged placed sticker id and its live finger location.
-    @State private var placedDrag: (id: UUID, location: CGPoint)? = nil
+    @State private var paletteDrag: PaletteDragState? = nil
+    /// Currently-dragged placed sticker id and its starting normalized position.
+    @State private var placedDrag: (id: UUID, startX: CGFloat, startY: CGFloat)? = nil
     /// Frames captured via PreferenceKey in the editor coordinate space.
     @State private var canvasRect: CGRect = .zero
+    @State private var canvasGlobalRect: CGRect = .zero
+    @State private var folderCardRect: CGRect = .zero
+    @State private var folderCardGlobalRect: CGRect = .zero
+    @State private var paletteItemRects: [String: CGRect] = [:]
+    @State private var paletteItemGlobalRects: [String: CGRect] = [:]
     @State private var trashRect: CGRect = .zero
+    @State private var trashGlobalRect: CGRect = .zero
     @State private var trashHot: Bool = false
 
     private static let editorCoordSpace = "trayEditorSpace"
@@ -111,21 +126,40 @@ struct TrayEditor: View {
             rightSticker: folder.rightStickerAsset,
             isExpanded: idx == expandedFolderIndex,
             photoAssets: peeks,
-            decorations: decorationsByFolder[folder.id] ?? []
+            decorations: decorations(for: folder)
         )
         .frame(width: 160)
     }
 
-    private var currentDecorations: [PlacedSticker] {
-        guard let folder = centeredFolder else { return [] }
-        return decorationsByFolder[folder.id] ?? []
+    private func decorations(for folder: Folder) -> [PlacedSticker] {
+        decorationCache[folder.id] ?? folder.placedStickers
     }
 
-    private func updateCurrentDecorations(_ transform: (inout [PlacedSticker]) -> Void) {
+    private var currentDecorations: [PlacedSticker] {
+        guard let folder = centeredFolder else { return [] }
+        return decorations(for: folder)
+    }
+
+    private func updateCurrentDecorations(save: Bool = true,
+                                          _ transform: (inout [PlacedSticker]) -> Void) {
         guard let folder = centeredFolder else { return }
-        var arr = decorationsByFolder[folder.id] ?? []
+        var arr = decorations(for: folder)
         transform(&arr)
-        decorationsByFolder[folder.id] = arr
+        decorationCache[folder.id] = arr
+        folder.placedStickers = arr
+        if save {
+            try? modelContext.save()
+        }
+    }
+
+    private func saveDecorationChanges() {
+        try? modelContext.save()
+    }
+
+    private func syncDecorationCache(for folder: Folder) {
+        if decorationCache[folder.id] == nil {
+            decorationCache[folder.id] = folder.placedStickers
+        }
     }
 
     private var currentStamps: [Memento] {
@@ -153,11 +187,6 @@ struct TrayEditor: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             trayContent
-                .background(
-                    RoundedRectangle(cornerRadius: trayCorner, style: .continuous)
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 6)
-                )
                 .padding(.horizontal, 10)
                 .padding(.bottom, 0)
                 .ignoresSafeArea(.container, edges: .bottom)
@@ -262,6 +291,7 @@ struct TrayEditor: View {
             activeCardID = nil
             return
         }
+        syncDecorationCache(for: folder)
         let newOrder = folder.stamps
             .sorted { $0.createdAt < $1.createdAt }
             .map(\.id)
@@ -428,15 +458,18 @@ struct TrayEditor: View {
                 .padding(.bottom, 14)
 
             middleControlsSection
-                .frame(height: 138)
 
             bottomBar
                 .padding(.horizontal, 14)
                 .padding(.bottom, 18)
         }
         .coordinateSpace(name: Self.editorCoordSpace)
-        .onPreferenceChange(CanvasRectKey.self) { canvasRect = $0 }
-        .onPreferenceChange(TrashRectKey.self) { trashRect = $0 }
+        .clipShape(RoundedRectangle(cornerRadius: trayCorner, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: trayCorner, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.06), radius: 18, x: 0, y: 6)
+        )
         .overlay(alignment: .topLeading) { dragGhostOverlay }
     }
 
@@ -466,15 +499,34 @@ struct TrayEditor: View {
                     showTitle: false
                 )
                 .frame(width: 280, height: 224)
+                .background(
+                    GeometryReader { geo in
+                        let named = geo.frame(in: .named(Self.editorCoordSpace))
+                        let global = geo.frame(in: .global)
+                        Color.clear
+                            .onChange(of: named, initial: true) { _, new in
+                                folderCardRect = new
+                            }
+                            .onChange(of: global, initial: true) { _, new in
+                                folderCardGlobalRect = new
+                            }
+                    }
+                )
                 .overlay(placedStickerInteractionLayer)
             }
         }
         .frame(height: canvasHeight)
         .background(
             GeometryReader { geo in
+                let named = geo.frame(in: .named(Self.editorCoordSpace))
+                let global = geo.frame(in: .global)
                 Color.clear
-                    .preference(key: CanvasRectKey.self,
-                                value: geo.frame(in: .named(Self.editorCoordSpace)))
+                    .onChange(of: named, initial: true) { _, new in
+                        canvasRect = new
+                    }
+                    .onChange(of: global, initial: true) { _, new in
+                        canvasGlobalRect = new
+                    }
             }
         )
     }
@@ -495,7 +547,7 @@ struct TrayEditor: View {
                         .contentShape(Rectangle())
                         .offset(x: sticker.normX * glassW,
                                 y: sticker.normY * glassW + folderYNudge)
-                        .gesture(placedStickerDragGesture(for: sticker, glassW: glassW, folderYNudge: folderYNudge))
+                        .gesture(placedStickerDragGesture(for: sticker, glassW: glassW))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -503,28 +555,33 @@ struct TrayEditor: View {
     }
 
     private func placedStickerDragGesture(for sticker: PlacedSticker,
-                                          glassW: CGFloat,
-                                          folderYNudge: CGFloat) -> some Gesture {
+                                          glassW: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.editorCoordSpace))
             .onChanged { value in
-                placedDrag = (sticker.id, value.location)
+                if placedDrag?.id != sticker.id {
+                    placedDrag = (sticker.id, sticker.normX, sticker.normY)
+                }
                 trashHot = trashRect.contains(value.location)
-                let canvasCenter = CGPoint(x: canvasRect.midX, y: canvasRect.midY)
-                let nx = (value.location.x - canvasCenter.x) / max(glassW, 1)
-                let ny = (value.location.y - canvasCenter.y - folderYNudge) / max(glassW, 1)
-                updateCurrentDecorations { arr in
+                let startX = placedDrag?.startX ?? sticker.normX
+                let startY = placedDrag?.startY ?? sticker.normY
+                let nx = startX + value.translation.width / max(glassW, 1)
+                let ny = startY + value.translation.height / max(glassW, 1)
+                updateCurrentDecorations(save: false) { arr in
                     if let i = arr.firstIndex(where: { $0.id == sticker.id }) {
-                        arr[i].normX = nx
-                        arr[i].normY = ny
+                        arr[i].normX = clampedStickerNorm(nx)
+                        arr[i].normY = clampedStickerNorm(ny)
                     }
                 }
             }
             .onEnded { value in
-                if trashRect.contains(value.location) {
+                let inTrash = trashRect.contains(value.location)
+                if inTrash {
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                     updateCurrentDecorations { arr in
                         arr.removeAll { $0.id == sticker.id }
                     }
+                } else {
+                    saveDecorationChanges()
                 }
                 placedDrag = nil
                 trashHot = false
@@ -533,23 +590,27 @@ struct TrayEditor: View {
 
     // MARK: - Middle controls section (constant height to keep tray stable)
 
+    /// Matches the stamps-mode pill + title block + their bottom paddings,
+    /// so the tray's overall height is identical across modes and the rounded
+    /// top corners stay in the same place when the user toggles Folder/Stamps.
+    private static let middleSectionHeight: CGFloat = 138
+
     @ViewBuilder
     private var middleControlsSection: some View {
         if mode == .boring {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                decoratingControls
-                    .padding(.horizontal, 14)
-                Spacer(minLength: 0)
-            }
+            decoratingControls
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.middleSectionHeight)
         } else {
             VStack(spacing: 0) {
                 floatingControlPill
                     .padding(.bottom, 18)
                 titleBlock
                     .padding(.bottom, 16)
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.middleSectionHeight)
         }
     }
 
@@ -564,7 +625,7 @@ struct TrayEditor: View {
 
     private var stickerPalette: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 ForEach(Self.stickerPaletteAssets, id: \.self) { asset in
                     paletteStickerButton(asset: asset)
                 }
@@ -573,6 +634,8 @@ struct TrayEditor: View {
             .padding(.vertical, 10)
         }
         .frame(height: 72)
+        .frame(maxWidth: .infinity)
+        .scrollDisabled(paletteDrag != nil)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Self.floatingPillFill)
@@ -588,37 +651,177 @@ struct TrayEditor: View {
         Image(asset)
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .frame(width: 46, height: 46)
+            .frame(width: 44, height: 44)
             .opacity(paletteDrag?.asset == asset ? 0.35 : 1.0)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.editorCoordSpace))
+            .background(
+                GeometryReader { geo in
+                    let named = geo.frame(in: .named(Self.editorCoordSpace))
+                    let global = geo.frame(in: .global)
+                    Color.clear
+                        .onChange(of: named, initial: true) { _, new in
+                            paletteItemRects[asset] = new
+                        }
+                        .onChange(of: global, initial: true) { _, new in
+                            paletteItemGlobalRects[asset] = new
+                        }
+                }
+            )
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .onChanged { value in
                         if paletteDrag == nil {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
-                        paletteDrag = (asset, value.location)
+                        var drag = paletteDrag ?? PaletteDragState(
+                            asset: asset,
+                            startLocation: paletteDragStartLocation(for: asset, value: value),
+                            startGlobalLocation: paletteDragStartGlobalLocation(for: asset, value: value),
+                            location: .zero,
+                            globalLocation: value.location
+                        )
+                        drag.location = paletteDragLocation(for: drag, value: value)
+                        drag.globalLocation = paletteDragGlobalLocation(for: drag, value: value)
+                        trashHot = trashGlobalRect.contains(drag.globalLocation)
+                        paletteDrag = drag
                     }
                     .onEnded { value in
-                        defer { paletteDrag = nil }
-                        guard canvasRect.contains(value.location) else { return }
-                        // FolderCard at the canvas is 280 wide → glassW = 280*0.648*1.24
-                        let cardW: CGFloat = 280
-                        let glassW = cardW * 0.648 * 1.24
-                        let folderYNudge = cardW * 0.648 * 0.06
-                        let canvasCenter = CGPoint(x: canvasRect.midX, y: canvasRect.midY)
-                        let nx = (value.location.x - canvasCenter.x) / glassW
-                        let ny = (value.location.y - canvasCenter.y - folderYNudge) / glassW
+                        var drag = paletteDrag ?? PaletteDragState(
+                            asset: asset,
+                            startLocation: paletteDragStartLocation(for: asset, value: value),
+                            startGlobalLocation: paletteDragStartGlobalLocation(for: asset, value: value),
+                            location: .zero,
+                            globalLocation: value.location
+                        )
+                        drag.location = paletteDragLocation(for: drag, value: value)
+                        drag.globalLocation = paletteDragGlobalLocation(for: drag, value: value)
+                        defer {
+                            paletteDrag = nil
+                            trashHot = false
+                        }
+                        let dropLocation = drag.globalLocation
+                        print("[PALETTE .onEnded] asset=\(asset) dropLocation=\(dropLocation) trashGlobalRect=\(trashGlobalRect) folderCardGlobalRect=\(folderCardGlobalRect) canvasGlobalRect=\(canvasGlobalRect) frontCoverDropGlobalRect=\(frontCoverDropGlobalRect)")
+                        // If the user releases on top of the trash zone, do
+                        // not place anything (treat as cancel).
+                        if trashGlobalRect.contains(dropLocation) {
+                            print("[PALETTE .onEnded] cancelled — drop on trash")
+                            return
+                        }
+
+                        guard shouldCommitPaletteDrop(at: dropLocation) else {
+                            print("[PALETTE .onEnded] cancelled — shouldCommitPaletteDrop=false")
+                            return
+                        }
+
+                        let normalized = normalizedStickerPosition(for: dropLocation)
                         let placed = PlacedSticker(
                             asset: asset,
-                            normX: max(min(nx, 0.55), -0.55),
-                            normY: max(min(ny, 0.55), -0.55),
+                            normX: normalized.x,
+                            normY: normalized.y,
                             rotation: Double.random(in: -10...10)
                         )
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         updateCurrentDecorations { $0.append(placed) }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
             )
+    }
+
+    private func paletteDragStartLocation(for asset: String,
+                                          value: DragGesture.Value) -> CGPoint {
+        guard let rect = paletteItemRects[asset], rect != .zero else {
+            return localPoint(fromGlobal: value.startLocation)
+        }
+        return CGPoint(x: rect.midX, y: rect.midY)
+    }
+
+    private func paletteDragStartGlobalLocation(for asset: String,
+                                                value: DragGesture.Value) -> CGPoint {
+        guard let rect = paletteItemGlobalRects[asset], rect != .zero else {
+            return value.startLocation
+        }
+        return CGPoint(x: rect.midX, y: rect.midY)
+    }
+
+    private func paletteDragLocation(for drag: PaletteDragState,
+                                     value: DragGesture.Value) -> CGPoint {
+        CGPoint(
+            x: drag.startLocation.x + value.translation.width,
+            y: drag.startLocation.y + value.translation.height
+        )
+    }
+
+    private func paletteDragGlobalLocation(for drag: PaletteDragState,
+                                           value: DragGesture.Value) -> CGPoint {
+        CGPoint(
+            x: drag.startGlobalLocation.x + value.translation.width,
+            y: drag.startGlobalLocation.y + value.translation.height
+        )
+    }
+
+    private func localPoint(fromGlobal point: CGPoint) -> CGPoint {
+        guard folderCardGlobalRect != .zero,
+              folderCardRect != .zero else {
+            return point
+        }
+        let trayOrigin = CGPoint(
+            x: folderCardGlobalRect.minX - folderCardRect.minX,
+            y: folderCardGlobalRect.minY - folderCardRect.minY
+        )
+        return CGPoint(x: point.x - trayOrigin.x,
+                       y: point.y - trayOrigin.y)
+    }
+
+    private var measuredFolderDropGlobalRect: CGRect {
+        folderCardGlobalRect == .zero ? canvasGlobalRect : folderCardGlobalRect
+    }
+
+    private var frontCoverDropGlobalRect: CGRect {
+        let cardRect = measuredFolderDropGlobalRect
+        guard cardRect != .zero else { return .zero }
+
+        let cardW = cardRect.width > 0 ? cardRect.width : 280
+        let glassW = cardW * 0.648 * 1.24
+        let folderYNudge = cardW * 0.648 * 0.06
+        let layerHeight = glassW * 0.92
+        let frontHeight = glassW * (104.0 / 184.0)
+        let frontYOffset = glassW * 0.13
+        let frontCenter = CGPoint(
+            x: cardRect.midX,
+            y: cardRect.midY + folderYNudge + frontYOffset
+        )
+
+        return CGRect(
+            x: frontCenter.x - glassW / 2,
+            y: frontCenter.y - frontHeight / 2,
+            width: glassW,
+            height: min(frontHeight, layerHeight)
+        )
+    }
+
+    private func shouldCommitPaletteDrop(at location: CGPoint) -> Bool {
+        let rect = frontCoverDropGlobalRect
+        guard rect != .zero else { return false }
+        return rect.insetBy(dx: -14, dy: -14).contains(location)
+    }
+
+    private func normalizedStickerPosition(for location: CGPoint) -> CGPoint {
+        let measuredCardRect = measuredFolderDropGlobalRect
+        let cardW = measuredCardRect.width > 0 ? measuredCardRect.width : 280
+        let glassW = cardW * 0.648 * 1.24
+        let folderYNudge = cardW * 0.648 * 0.06
+
+        guard measuredCardRect != .zero else {
+            return .zero
+        }
+
+        let cardCenter = CGPoint(x: measuredCardRect.midX, y: measuredCardRect.midY)
+        let nx = (location.x - cardCenter.x) / max(glassW, 1)
+        let ny = (location.y - cardCenter.y - folderYNudge) / max(glassW, 1)
+        return CGPoint(x: clampedStickerNorm(nx), y: clampedStickerNorm(ny))
+    }
+
+    private func clampedStickerNorm(_ value: CGFloat) -> CGFloat {
+        max(min(value, 0.55), -0.55)
     }
 
     private var trashZone: some View {
@@ -640,9 +843,15 @@ struct TrayEditor: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.7), value: trashHot)
         .background(
             GeometryReader { geo in
+                let named = geo.frame(in: .named(Self.editorCoordSpace))
+                let global = geo.frame(in: .global)
                 Color.clear
-                    .preference(key: TrashRectKey.self,
-                                value: geo.frame(in: .named(Self.editorCoordSpace)))
+                    .onChange(of: named, initial: true) { _, new in
+                        trashRect = new
+                    }
+                    .onChange(of: global, initial: true) { _, new in
+                        trashGlobalRect = new
+                    }
             }
         )
     }
@@ -1287,7 +1496,49 @@ private struct CanvasRectKey: PreferenceKey {
     }
 }
 
+private struct CanvasGlobalRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct FolderCardRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct FolderCardGlobalRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct PaletteItemRectKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct PaletteItemGlobalRectKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 private struct TrashRectKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct TrashGlobalRectKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()

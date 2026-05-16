@@ -11,6 +11,8 @@ final class Folder {
     var rightStickerAsset: String
     /// Up to three asset names used for the closed-folder peek photos.
     var peekPhotoAssets: [String]
+    /// JSON-encoded user-placed cover stickers for this folder.
+    var placedStickerData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \Memento.folder)
     var stamps: [Memento] = []
@@ -22,6 +24,7 @@ final class Folder {
         leftStickerAsset: String,
         rightStickerAsset: String,
         peekPhotoAssets: [String] = [],
+        placedStickerData: Data? = nil,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -30,6 +33,19 @@ final class Folder {
         self.leftStickerAsset = leftStickerAsset
         self.rightStickerAsset = rightStickerAsset
         self.peekPhotoAssets = peekPhotoAssets
+        self.placedStickerData = placedStickerData
         self.createdAt = createdAt
+    }
+}
+
+extension Folder {
+    var placedStickers: [PlacedSticker] {
+        get {
+            guard let placedStickerData else { return [] }
+            return (try? JSONDecoder().decode([PlacedSticker].self, from: placedStickerData)) ?? []
+        }
+        set {
+            placedStickerData = try? JSONEncoder().encode(newValue)
+        }
     }
 }

@@ -4,7 +4,7 @@ import SwiftUI
 /// normalized to the folder's `glassW` (interior body width) so the same
 /// values render proportionally at any folder card size: (0,0) = center,
 /// (±0.5, ±0.5) ≈ edges of the folder body.
-struct PlacedSticker: Identifiable, Equatable {
+struct PlacedSticker: Identifiable, Equatable, Codable {
     let id: UUID
     var asset: String
     var normX: CGFloat
