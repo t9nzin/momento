@@ -33,11 +33,6 @@ struct PlacedSticker: Identifiable, Equatable, Codable {
 struct FolderCard: View {
     var title: String = "Japan 2024"
     var photoCount: Int = 83
-    var leftSticker: String = "FlagSticker"
-    var leftStickerScale: CGFloat = 1.0
-    var rightSticker: String = "FlagSticker"
-    var rightStickerScale: CGFloat = 1.0
-    var extraSticker: String? = nil
     var isExpanded: Bool = false
     /// Override the three peek-photo assets. Order: [center, left, right].
     var photoAssets: [String]? = nil
@@ -88,10 +83,6 @@ struct FolderCard: View {
                     let glassW = folderW * 1.24
 
                     SVGGlassFolderReplica(photoAssets: displayAssets, width: glassW)
-                        .scaleEffect(folderScale)
-                        .offset(y: folderYNudge + folderJump)
-
-                    coverStickerLayer(width: glassW)
                         .scaleEffect(folderScale)
                         .offset(y: folderYNudge + folderJump)
 
@@ -159,36 +150,6 @@ struct FolderCard: View {
         .allowsHitTesting(false)
     }
 
-    private func coverStickerLayer(width: CGFloat) -> some View {
-        ZStack {
-            Image(leftSticker)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: width * 0.205 * leftStickerScale)
-                .rotationEffect(.degrees(-8))
-                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                .offset(x: -width * 0.225, y: width * 0.090)
-
-            Image(rightSticker)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: width * 0.235 * rightStickerScale)
-                .rotationEffect(.degrees(7))
-                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                .offset(x: width * 0.230, y: width * 0.105)
-
-            if let extraSticker {
-                Image(extraSticker)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: width * 0.205)
-                    .rotationEffect(.degrees(-4))
-                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
-                    .offset(x: -width * 0.115, y: width * 0.235)
-            }
-        }
-        .frame(width: width, height: width * 0.92)
-    }
 }
 
 private struct PeekPhoto: View {

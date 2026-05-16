@@ -98,9 +98,6 @@ struct TrayEditor: View {
     @State private var folderCardGlobalRect: CGRect = .zero
     @State private var paletteItemRects: [String: CGRect] = [:]
     @State private var paletteItemGlobalRects: [String: CGRect] = [:]
-    @State private var trashRect: CGRect = .zero
-    @State private var trashGlobalRect: CGRect = .zero
-    @State private var trashHot: Bool = false
 
     private static let editorCoordSpace = "trayEditorSpace"
 
@@ -122,8 +119,6 @@ struct TrayEditor: View {
         FolderCard(
             title: folder.name,
             photoCount: folder.stamps.count,
-            leftSticker: folder.leftStickerAsset,
-            rightSticker: folder.rightStickerAsset,
             isExpanded: idx == expandedFolderIndex,
             photoAssets: peeks,
             decorations: decorations(for: folder)
@@ -491,8 +486,6 @@ struct TrayEditor: View {
                 FolderCard(
                     title: folder.name,
                     photoCount: folder.stamps.count,
-                    leftSticker: folder.leftStickerAsset,
-                    rightSticker: folder.rightStickerAsset,
                     isExpanded: false,
                     photoAssets: folder.peekPhotoAssets.isEmpty ? nil : folder.peekPhotoAssets,
                     decorations: currentDecorations,
@@ -561,7 +554,6 @@ struct TrayEditor: View {
                 if placedDrag?.id != sticker.id {
                     placedDrag = (sticker.id, sticker.normX, sticker.normY)
                 }
-                trashHot = trashRect.contains(value.location)
                 let startX = placedDrag?.startX ?? sticker.normX
                 let startY = placedDrag?.startY ?? sticker.normY
                 let nx = startX + value.translation.width / max(glassW, 1)
@@ -574,8 +566,8 @@ struct TrayEditor: View {
                 }
             }
             .onEnded { value in
-                let inTrash = trashRect.contains(value.location)
-                if inTrash {
+                let droppedOutside = canvasRect != .zero && !canvasRect.contains(value.location)
+                if droppedOutside {
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                     updateCurrentDecorations { arr in
                         arr.removeAll { $0.id == sticker.id }
@@ -584,7 +576,6 @@ struct TrayEditor: View {
                     saveDecorationChanges()
                 }
                 placedDrag = nil
-                trashHot = false
             }
     }
 
@@ -617,10 +608,7 @@ struct TrayEditor: View {
     // MARK: - Decorating controls (palette + trash)
 
     private var decoratingControls: some View {
-        HStack(spacing: 12) {
-            stickerPalette
-            trashZone
-        }
+        stickerPalette
     }
 
     private var stickerPalette: some View {
@@ -682,7 +670,6 @@ struct TrayEditor: View {
                         )
                         drag.location = paletteDragLocation(for: drag, value: value)
                         drag.globalLocation = paletteDragGlobalLocation(for: drag, value: value)
-                        trashHot = trashGlobalRect.contains(drag.globalLocation)
                         paletteDrag = drag
                     }
                     .onEnded { value in
@@ -697,19 +684,9 @@ struct TrayEditor: View {
                         drag.globalLocation = paletteDragGlobalLocation(for: drag, value: value)
                         defer {
                             paletteDrag = nil
-                            trashHot = false
                         }
                         let dropLocation = drag.globalLocation
-                        print("[PALETTE .onEnded] asset=\(asset) dropLocation=\(dropLocation) trashGlobalRect=\(trashGlobalRect) folderCardGlobalRect=\(folderCardGlobalRect) canvasGlobalRect=\(canvasGlobalRect) frontCoverDropGlobalRect=\(frontCoverDropGlobalRect)")
-                        // If the user releases on top of the trash zone, do
-                        // not place anything (treat as cancel).
-                        if trashGlobalRect.contains(dropLocation) {
-                            print("[PALETTE .onEnded] cancelled — drop on trash")
-                            return
-                        }
-
                         guard shouldCommitPaletteDrop(at: dropLocation) else {
-                            print("[PALETTE .onEnded] cancelled — shouldCommitPaletteDrop=false")
                             return
                         }
 
@@ -822,38 +799,6 @@ struct TrayEditor: View {
 
     private func clampedStickerNorm(_ value: CGFloat) -> CGFloat {
         max(min(value, 0.55), -0.55)
-    }
-
-    private var trashZone: some View {
-        ZStack {
-            Circle()
-                .fill(trashHot ? Color.red.opacity(0.18) : Color.white)
-                .overlay(
-                    Circle().stroke(trashHot ? Color.red.opacity(0.7) : Color.black.opacity(0.08),
-                                    lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
-
-            Image(systemName: "trash")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(trashHot ? Color.red : Color.black.opacity(0.55))
-                .scaleEffect(trashHot ? 1.15 : 1.0)
-        }
-        .frame(width: 56, height: 56)
-        .animation(.spring(response: 0.28, dampingFraction: 0.7), value: trashHot)
-        .background(
-            GeometryReader { geo in
-                let named = geo.frame(in: .named(Self.editorCoordSpace))
-                let global = geo.frame(in: .global)
-                Color.clear
-                    .onChange(of: named, initial: true) { _, new in
-                        trashRect = new
-                    }
-                    .onChange(of: global, initial: true) { _, new in
-                        trashGlobalRect = new
-                    }
-            }
-        )
     }
 
     @ViewBuilder
@@ -1486,62 +1431,6 @@ private struct SourceMovingBubble: View {
             .frame(width: width, height: height)
             .opacity(0.55 * progressDouble)
             .allowsHitTesting(false)
-    }
-}
-
-private struct CanvasRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct CanvasGlobalRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct FolderCardRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct FolderCardGlobalRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct PaletteItemRectKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
-private struct PaletteItemGlobalRectKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
-private struct TrashRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct TrashGlobalRectKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
     }
 }
 
