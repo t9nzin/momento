@@ -77,6 +77,41 @@ struct TrayEditor: View {
     @State private var sourceTab: SourceTab = .house
     @State private var sourceMorphProgress: CGFloat = 0
 
+    // MARK: - Folder customization tabs
+
+    enum FolderTab: String, CaseIterable, Identifiable {
+        case rename, stickers, tint, more
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .rename: return "Rename"
+            case .stickers: return "Stickers"
+            case .tint: return "Tint"
+            case .more: return "More"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .rename: return "square.and.pencil"
+            case .stickers: return "face.smiling"
+            case .tint: return "tag"
+            case .more: return "ellipsis.circle"
+            }
+        }
+    }
+
+    @State private var folderTab: FolderTab = .tint
+    @State private var selectedTintIndex: Int = 0
+    @FocusState private var titleFocused: Bool
+
+    private static let tintPalette: [Color] = [
+        Color.white,
+        Color(red: 0.85, green: 0.92, blue: 0.98),
+        Color(red: 0.99, green: 0.86, blue: 0.88),
+        Color(red: 0.86, green: 0.95, blue: 0.88),
+        Color(red: 0.99, green: 0.95, blue: 0.80)
+    ]
+
     // MARK: - Folder decoration state
 
     private static let stickerPaletteAssets: [String] = [
@@ -102,7 +137,7 @@ struct TrayEditor: View {
     private static let editorCoordSpace = "trayEditorSpace"
 
     private let trayCorner: CGFloat = 36
-    private let canvasHeight: CGFloat = 240
+    private let canvasHeight: CGFloat = 260
     private static let sourceAccentColor = Color(red: 0.31, green: 0.48, blue: 0.96)
     private static let glassButtonFill = Color.white.opacity(0.72)
     private static let floatingPillFill = Color(red: 0.965, green: 0.965, blue: 0.970)
@@ -450,7 +485,13 @@ struct TrayEditor: View {
 
             canvasArea
                 .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                .padding(.bottom, 12)
+
+            if mode == .boring {
+                folderTitleDateBlock
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
 
             middleControlsSection
 
@@ -482,31 +523,39 @@ struct TrayEditor: View {
             dottedBackground
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            if let folder = centeredFolder {
-                FolderCard(
-                    title: folder.name,
-                    photoCount: folder.stamps.count,
-                    isExpanded: false,
-                    photoAssets: folder.peekPhotoAssets.isEmpty ? nil : folder.peekPhotoAssets,
-                    decorations: currentDecorations,
-                    showTitle: false
-                )
-                .frame(width: 280, height: 224)
-                .background(
-                    GeometryReader { geo in
-                        let named = geo.frame(in: .named(Self.editorCoordSpace))
-                        let global = geo.frame(in: .global)
-                        Color.clear
-                            .onChange(of: named, initial: true) { _, new in
-                                folderCardRect = new
-                            }
-                            .onChange(of: global, initial: true) { _, new in
-                                folderCardGlobalRect = new
-                            }
-                    }
-                )
-                .overlay(placedStickerInteractionLayer)
+            HStack(spacing: 8) {
+                if let folder = centeredFolder {
+                    FolderCard(
+                        title: folder.name,
+                        photoCount: folder.stamps.count,
+                        isExpanded: false,
+                        photoAssets: folder.peekPhotoAssets.isEmpty ? nil : folder.peekPhotoAssets,
+                        decorations: currentDecorations,
+                        showTitle: false
+                    )
+                    .frame(width: 190, height: 160)
+                    .background(
+                        GeometryReader { geo in
+                            let named = geo.frame(in: .named(Self.editorCoordSpace))
+                            let global = geo.frame(in: .global)
+                            Color.clear
+                                .onChange(of: named, initial: true) { _, new in
+                                    folderCardRect = new
+                                }
+                                .onChange(of: global, initial: true) { _, new in
+                                    folderCardGlobalRect = new
+                                }
+                        }
+                    )
+                    .overlay(placedStickerInteractionLayer)
+                } else {
+                    Spacer()
+                }
+
+                stickerGrid
+                    .frame(width: 130)
             }
+            .padding(.horizontal, 6)
         }
         .frame(height: canvasHeight)
         .background(
@@ -558,10 +607,11 @@ struct TrayEditor: View {
                 let startY = placedDrag?.startY ?? sticker.normY
                 let nx = startX + value.translation.width / max(glassW, 1)
                 let ny = startY + value.translation.height / max(glassW, 1)
+                let clamped = clampedStickerPosition(normX: nx, normY: ny, scale: sticker.scale)
                 updateCurrentDecorations(save: false) { arr in
                     if let i = arr.firstIndex(where: { $0.id == sticker.id }) {
-                        arr[i].normX = clampedStickerNorm(nx)
-                        arr[i].normY = clampedStickerNorm(ny)
+                        arr[i].normX = clamped.x
+                        arr[i].normY = clamped.y
                     }
                 }
             }
@@ -589,7 +639,7 @@ struct TrayEditor: View {
     @ViewBuilder
     private var middleControlsSection: some View {
         if mode == .boring {
-            decoratingControls
+            folderTabSection
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
                 .frame(height: Self.middleSectionHeight)
@@ -605,41 +655,226 @@ struct TrayEditor: View {
         }
     }
 
-    // MARK: - Decorating controls (palette + trash)
+    // MARK: - Folder customization: title + date + action pill + tint colors
 
-    private var decoratingControls: some View {
-        stickerPalette
+    @ViewBuilder
+    private var folderTitleDateBlock: some View {
+        if let folder = centeredFolder {
+            VStack(spacing: 2) {
+                titleEditorRow(folder: folder)
+                Text("Created \(folder.createdAt.formatted(.dateTime.month(.abbreviated).day().year()))")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.35))
+            }
+        }
     }
 
-    private var stickerPalette: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(Self.stickerPaletteAssets, id: \.self) { asset in
-                    paletteStickerButton(asset: asset)
+    private func titleEditorRow(folder: Folder) -> some View {
+        let bindable = Bindable(folder)
+        return HStack(spacing: 6) {
+            TextField("Untitled", text: bindable.name)
+                .focused($titleFocused)
+                .multilineTextAlignment(.leading)
+                .submitLabel(.done)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(false)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.88))
+                .fixedSize(horizontal: true, vertical: false)
+                .onSubmit { titleFocused = false }
+                .onChange(of: titleFocused) { _, isFocused in
+                    if !isFocused { commitTitle(folder: folder) }
                 }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+
+            Image(systemName: titleFocused ? "checkmark.circle.fill" : "pencil.circle.fill")
+                .font(.system(size: 16, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.black.opacity(0.42))
         }
-        .frame(height: 72)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !titleFocused { titleFocused = true }
+        }
+    }
+
+    private func commitTitle(folder: Folder) {
+        let trimmed = folder.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            folder.name = "Untitled"
+        } else if trimmed != folder.name {
+            folder.name = trimmed
+        }
+        try? modelContext.save()
+    }
+
+    @ViewBuilder
+    private var folderTabSection: some View {
+        VStack(spacing: 14) {
+            folderActionPill
+            folderTabContextual
+                .frame(height: 44)
+        }
+    }
+
+    private var folderActionPill: some View {
+        GeometryReader { geo in
+            let totalW = geo.size.width
+            let totalH = geo.size.height
+            let inset: CGFloat = 4
+            let segCount = CGFloat(FolderTab.allCases.count)
+            let segW = (totalW - inset * 2) / segCount
+            let segH = totalH - inset * 2
+            let activeIdx = FolderTab.allCases.firstIndex(of: folderTab) ?? 0
+            let bubbleX = inset + CGFloat(activeIdx) * segW
+
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Self.floatingPillFill)
+                    .overlay(Capsule().stroke(Color.black.opacity(0.04), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
+
+                Capsule()
+                    .fill(Self.sourceAccentColor.opacity(0.14))
+                    .frame(width: segW, height: segH)
+                    .offset(x: bubbleX, y: inset)
+                    .animation(.spring(response: 0.36, dampingFraction: 0.78), value: folderTab)
+
+                HStack(spacing: 0) {
+                    ForEach(FolderTab.allCases) { tab in
+                        folderTabButton(tab: tab)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { selectFolderTab(tab) }
+                    }
+                }
+                .padding(inset)
+            }
+        }
+        .frame(height: 56)
+    }
+
+    private func folderTabButton(tab: FolderTab) -> some View {
+        let selected = folderTab == tab
+        return VStack(spacing: 2) {
+            Image(systemName: tab.icon)
+                .font(.system(size: 16, weight: .medium))
+            Text(tab.label)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(selected ? Self.sourceAccentColor : Color.black.opacity(0.55))
+        .animation(.easeInOut(duration: 0.22), value: folderTab)
+    }
+
+    private func selectFolderTab(_ tab: FolderTab) {
+        guard folderTab != tab else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        folderTab = tab
+        if tab == .rename {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                titleFocused = true
+            }
+        } else if titleFocused {
+            titleFocused = false
+        }
+    }
+
+    @ViewBuilder
+    private var folderTabContextual: some View {
+        switch folderTab {
+        case .tint:
+            folderColorPalette
+        case .more:
+            Text("More options coming soon")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.black.opacity(0.40))
+                .frame(maxWidth: .infinity)
+        default:
+            Color.clear.frame(height: 0)
+        }
+    }
+
+    private var folderColorPalette: some View {
+        HStack(spacing: 14) {
+            ForEach(Self.tintPalette.indices, id: \.self) { idx in
+                tintCircle(index: idx)
+            }
+        }
         .frame(maxWidth: .infinity)
-        .scrollDisabled(paletteDrag != nil)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Self.floatingPillFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.black.opacity(0.05), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
-        )
+    }
+
+    private func tintCircle(index: Int) -> some View {
+        let color = Self.tintPalette[index]
+        let selected = selectedTintIndex == index
+        return ZStack {
+            Circle()
+                .fill(color)
+                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 0.5))
+            if selected {
+                Circle()
+                    .stroke(Self.sourceAccentColor, lineWidth: 1.8)
+                    .padding(-3)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Circle())
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            selectedTintIndex = index
+        }
+    }
+
+    private var stickerGrid: some View {
+        TabView {
+            ForEach(stickerPages.indices, id: \.self) { pageIdx in
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 8),
+                        GridItem(.flexible(), spacing: 8)
+                    ],
+                    spacing: 8
+                ) {
+                    ForEach(stickerPages[pageIdx], id: \.self) { asset in
+                        paletteStickerButton(asset: asset)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+                .padding(.bottom, 28)
+                .tag(pageIdx)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: stickerPages.count > 1 ? .always : .never))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+    }
+
+    private var stickerPages: [[String]] {
+        let pageSize = 6
+        var pages: [[String]] = []
+        var current: [String] = []
+        for asset in Self.stickerPaletteAssets {
+            current.append(asset)
+            if current.count == pageSize {
+                pages.append(current)
+                current = []
+            }
+        }
+        if !current.isEmpty { pages.append(current) }
+        return pages
     }
 
     private func paletteStickerButton(asset: String) -> some View {
         Image(asset)
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .frame(width: 44, height: 44)
+            .padding(8)
+            .aspectRatio(1, contentMode: .fit)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 1)
+            )
             .opacity(paletteDrag?.asset == asset ? 0.35 : 1.0)
             .contentShape(Rectangle())
             .background(
@@ -781,7 +1016,7 @@ struct TrayEditor: View {
         return rect.insetBy(dx: -14, dy: -14).contains(location)
     }
 
-    private func normalizedStickerPosition(for location: CGPoint) -> CGPoint {
+    private func normalizedStickerPosition(for location: CGPoint, scale: CGFloat = 1.0) -> CGPoint {
         let measuredCardRect = measuredFolderDropGlobalRect
         let cardW = measuredCardRect.width > 0 ? measuredCardRect.width : 280
         let glassW = cardW * 0.648 * 1.24
@@ -794,11 +1029,30 @@ struct TrayEditor: View {
         let cardCenter = CGPoint(x: measuredCardRect.midX, y: measuredCardRect.midY)
         let nx = (location.x - cardCenter.x) / max(glassW, 1)
         let ny = (location.y - cardCenter.y - folderYNudge) / max(glassW, 1)
-        return CGPoint(x: clampedStickerNorm(nx), y: clampedStickerNorm(ny))
+        return clampedStickerPosition(normX: nx, normY: ny, scale: scale)
     }
 
-    private func clampedStickerNorm(_ value: CGFloat) -> CGFloat {
-        max(min(value, 0.55), -0.55)
+    // Front cover bounds in the decorationLayer's normalized coords. The
+    // FolderCard renders SVGFrontCoverShape at width = glassW, height =
+    // glassW * (104/184), centered horizontally and offset down by 0.13*glassW
+    // from the FolderCard / decorationLayer center. Stickers are .frame(width:
+    // glassW * 0.20 * scale) — treated as roughly square — so we inset the
+    // cover bounds by the sticker's half-size to keep it fully on the cover.
+    private static let frontCoverNormXHalf: CGFloat = 0.5
+    private static let frontCoverNormYCenter: CGFloat = 0.13
+    private static let frontCoverNormYHalf: CGFloat = 0.5 * (104.0 / 184.0)
+    private static let stickerNormHalfSize: CGFloat = 0.10
+
+    private func clampedStickerPosition(normX: CGFloat,
+                                        normY: CGFloat,
+                                        scale: CGFloat) -> CGPoint {
+        let halfSize = Self.stickerNormHalfSize * scale
+        let xBound = max(Self.frontCoverNormXHalf - halfSize, 0)
+        let yMin = (Self.frontCoverNormYCenter - Self.frontCoverNormYHalf) + halfSize
+        let yMax = (Self.frontCoverNormYCenter + Self.frontCoverNormYHalf) - halfSize
+        let clampedX = max(min(normX, xBound), -xBound)
+        let clampedY = max(min(normY, max(yMin, yMax)), min(yMin, yMax))
+        return CGPoint(x: clampedX, y: clampedY)
     }
 
     @ViewBuilder
