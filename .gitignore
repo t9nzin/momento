@@ -7,3 +7,10 @@ build/
 Momento.xcworkspace/
 Pods/
 .swiftpm/
+
+# SDUI monorepo
+server/target/
+node_modules/
+web/dist/
+web/coverage/
+.build/

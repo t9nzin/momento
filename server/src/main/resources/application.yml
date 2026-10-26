@@ -1,0 +1,13 @@
+server:
+  port: 8080
+
+spring:
+  jackson:
+    default-property-inclusion: non_null
+
+sdui:
+  # Validate every screen before it is sent. Cheap at this size; a production
+  # deployment might turn it off and rely on the test suite instead.
+  validate-responses: true
+  cors:
+    allowed-origins: http://localhost:5173

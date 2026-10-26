@@ -1,0 +1,90 @@
+{
+  "schemaVersion" : 1,
+  "screenId" : "item-detail",
+  "title" : "Ticket stub",
+  "data" : {
+    "keepsake" : {
+      "id" : "1",
+      "title" : "Ticket stub",
+      "description" : "Front row at the first concert I ever went to.",
+      "imageUrl" : "https://picsum.photos/seed/ticket-stub/600/600",
+      "year" : 2016,
+      "favorite" : true
+    }
+  },
+  "root" : {
+    "type" : "column",
+    "id" : "root",
+    "props" : {
+      "spacing" : 12
+    },
+    "children" : [ {
+      "type" : "image",
+      "id" : "photo",
+      "props" : {
+        "url" : "{{keepsake.imageUrl}}",
+        "alt" : "{{keepsake.title}}",
+        "aspectRatio" : 1.0
+      }
+    }, {
+      "type" : "spacer",
+      "id" : "photo-gap",
+      "props" : {
+        "size" : 4
+      }
+    }, {
+      "type" : "text",
+      "id" : "title",
+      "props" : {
+        "text" : "{{keepsake.title}}",
+        "style" : "title"
+      }
+    }, {
+      "type" : "text",
+      "id" : "year",
+      "props" : {
+        "text" : "Kept since {{keepsake.year}}",
+        "style" : "caption"
+      }
+    }, {
+      "type" : "text",
+      "id" : "description",
+      "props" : {
+        "text" : "{{keepsake.description}}",
+        "style" : "body"
+      }
+    }, {
+      "type" : "row",
+      "id" : "actions",
+      "props" : {
+        "spacing" : 8
+      },
+      "children" : [ {
+        "type" : "button",
+        "id" : "favorite",
+        "props" : {
+          "label" : "â¥ Favourite",
+          "style" : "primary"
+        },
+        "action" : {
+          "type" : "request",
+          "method" : "POST",
+          "path" : "/api/items/1/favorite",
+          "refresh" : true
+        }
+      }, {
+        "type" : "button",
+        "id" : "back",
+        "props" : {
+          "label" : "Back to gallery",
+          "style" : "secondary"
+        },
+        "action" : {
+          "type" : "navigate",
+          "screenId" : "gallery",
+          "params" : { }
+        }
+      } ]
+    } ]
+  }
+}
