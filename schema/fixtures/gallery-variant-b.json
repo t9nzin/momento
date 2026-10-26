@@ -1,0 +1,116 @@
+{
+  "schemaVersion" : 1,
+  "screenId" : "gallery",
+  "title" : "My keepsakes",
+  "data" : {
+    "items" : [ {
+      "id" : "1",
+      "title" : "Ticket stub",
+      "description" : "Front row at the first concert I ever went to.",
+      "imageUrl" : "https://picsum.photos/seed/ticket-stub/600/600",
+      "year" : 2016,
+      "favorite" : true
+    }, {
+      "id" : "2",
+      "title" : "Pressed flower",
+      "description" : "A daisy from the field behind my grandparents' house.",
+      "imageUrl" : "https://picsum.photos/seed/pressed-flower/600/600",
+      "year" : 2009,
+      "favorite" : false
+    }, {
+      "id" : "3",
+      "title" : "Seashell",
+      "description" : "Found on a beach walk in Tofino at low tide.",
+      "imageUrl" : "https://picsum.photos/seed/seashell/600/600",
+      "year" : 2021,
+      "favorite" : false
+    }, {
+      "id" : "4",
+      "title" : "Polaroid",
+      "description" : "Six friends squeezed into one photo booth frame.",
+      "imageUrl" : "https://picsum.photos/seed/polaroid/600/600",
+      "year" : 2018,
+      "favorite" : true
+    }, {
+      "id" : "5",
+      "title" : "Postcard from Kyoto",
+      "description" : "Sent to myself so it would arrive after I got home.",
+      "imageUrl" : "https://picsum.photos/seed/kyoto-postcard/600/600",
+      "year" : 2023,
+      "favorite" : false
+    }, {
+      "id" : "6",
+      "title" : "Grandma's ring",
+      "description" : "Too small for any finger, so it lives on a chain.",
+      "imageUrl" : "https://picsum.photos/seed/grandmas-ring/600/600",
+      "year" : 1974,
+      "favorite" : false
+    }, {
+      "id" : "7",
+      "title" : "Festival wristband",
+      "description" : "Never cut it off until it fell off on its own.",
+      "imageUrl" : "https://picsum.photos/seed/wristband/600/600",
+      "year" : 2019,
+      "favorite" : false
+    }, {
+      "id" : "8",
+      "title" : "Train ticket",
+      "description" : "Overnight sleeper from Vienna to Venice.",
+      "imageUrl" : "https://picsum.photos/seed/train-ticket/600/600",
+      "year" : 2022,
+      "favorite" : false
+    } ],
+    "count" : 8
+  },
+  "root" : {
+    "type" : "column",
+    "id" : "root",
+    "props" : {
+      "spacing" : 20
+    },
+    "children" : [ {
+      "type" : "column",
+      "id" : "header",
+      "props" : {
+        "spacing" : 4
+      },
+      "children" : [ {
+        "type" : "text",
+        "id" : "heading",
+        "props" : {
+          "text" : "My keepsakes",
+          "style" : "title"
+        }
+      }, {
+        "type" : "text",
+        "id" : "subheading",
+        "props" : {
+          "text" : "{{count}} things worth keeping",
+          "style" : "caption"
+        }
+      } ]
+    }, {
+      "type" : "list",
+      "id" : "items",
+      "props" : {
+        "itemsBinding" : "items"
+      },
+      "template" : {
+        "type" : "card",
+        "id" : "item-card",
+        "props" : {
+          "imageUrl" : "{{item.imageUrl}}",
+          "title" : "{{item.title}}",
+          "subtitle" : "{{item.year}}"
+        },
+        "action" : {
+          "type" : "navigate",
+          "screenId" : "item-detail",
+          "params" : {
+            "itemId" : "{{item.id}}"
+          }
+        }
+      }
+    } ]
+  }
+}

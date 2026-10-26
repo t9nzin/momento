@@ -43,6 +43,18 @@ class ScreenControllerTest {
     }
 
     @Test
+    void reportsTheServedVariantInAHeader() throws Exception {
+        mvc.perform(get("/api/screens/gallery").param("variant", "b"))
+                .andExpect(header().string(ScreenController.VARIANT_HEADER, "B"))
+                .andExpect(jsonPath("$.root.children[1].type").value("list"));
+    }
+
+    @Test
+    void unknownVariantOverrideIs400() throws Exception {
+        mvc.perform(get("/api/screens/gallery").param("variant", "C")).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void healthReportsOk() throws Exception {
         mvc.perform(get("/api/health")).andExpect(jsonPath("$.status").value("ok"));
     }

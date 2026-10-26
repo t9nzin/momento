@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { DEFAULT_CLIENT_CONTEXT } from '../api/clientContext';
+import { ROUTER_FUTURE_FLAGS } from '../routerFutureFlags';
 import type { Screen } from '../schema/types';
 import { loadFixture } from '../test/fixtures';
 import { mockServer, screenCalls } from '../test/mockServer';
@@ -14,7 +15,7 @@ function LocationProbe() {
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[path]} future={ROUTER_FUTURE_FLAGS}>
       <Routes>
         <Route path="/screens/:screenId" element={<ScreenPage context={DEFAULT_CLIENT_CONTEXT} />} />
       </Routes>
@@ -27,7 +28,7 @@ function renderAt(path: string) {
 function detailServer() {
   let favorite = true;
   return mockServer(({ method, url }) => {
-    if (method === 'GET' && url.pathname === '/api/screens/gallery') return { body: loadFixture('gallery.json') };
+    if (method === 'GET' && url.pathname === '/api/screens/gallery') return { body: loadFixture('gallery-variant-a.json') };
     if (method === 'GET' && url.pathname === '/api/screens/item-detail') {
       const detail: Screen = loadFixture('item-detail.json');
       const label = favorite ? '♥ Favourite' : '♡ Add to favourites';

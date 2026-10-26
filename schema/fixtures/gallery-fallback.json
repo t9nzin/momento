@@ -3,7 +3,6 @@
   "screenId" : "gallery",
   "title" : "My keepsakes",
   "data" : {
-    "count" : 8,
     "items" : [ {
       "id" : "1",
       "title" : "Ticket stub",
@@ -60,40 +59,71 @@
       "imageUrl" : "https://picsum.photos/seed/train-ticket/600/600",
       "year" : 2022,
       "favorite" : false
-    } ]
+    } ],
+    "count" : 8
   },
   "root" : {
     "type" : "column",
     "id" : "root",
+    "props" : {
+      "spacing" : 20
+    },
     "children" : [ {
-      "type" : "text",
-      "id" : "heading",
+      "type" : "column",
+      "id" : "header",
       "props" : {
-        "text" : "My keepsakes",
-        "style" : "title"
-      }
+        "spacing" : 4
+      },
+      "children" : [ {
+        "type" : "text",
+        "id" : "heading",
+        "props" : {
+          "text" : "My keepsakes",
+          "style" : "title"
+        }
+      }, {
+        "type" : "text",
+        "id" : "subheading",
+        "props" : {
+          "text" : "{{count}} things worth keeping",
+          "style" : "caption"
+        }
+      } ]
     }, {
-      "type" : "text",
-      "id" : "subheading",
-      "props" : {
-        "text" : "{{count}} things worth keeping",
-        "style" : "caption"
-      }
-    }, {
-      "type" : "grid",
+      "type" : "list",
       "id" : "items",
       "props" : {
-        "columns" : 2,
         "itemsBinding" : "items"
       },
       "template" : {
-        "type" : "card",
+        "type" : "column",
         "id" : "item-card",
         "props" : {
-          "imageUrl" : "{{item.imageUrl}}",
-          "title" : "{{item.title}}",
-          "subtitle" : "{{item.year}}"
+          "spacing" : 4
         },
+        "children" : [ {
+          "type" : "image",
+          "id" : "item-card-image",
+          "props" : {
+            "url" : "{{item.imageUrl}}",
+            "alt" : "{{item.title}}",
+            "aspectRatio" : 1.0
+          }
+        }, {
+          "type" : "text",
+          "id" : "item-card-title",
+          "props" : {
+            "text" : "{{item.title}}",
+            "style" : "headline"
+          }
+        }, {
+          "type" : "text",
+          "id" : "item-card-subtitle",
+          "props" : {
+            "text" : "{{item.year}}",
+            "style" : "caption"
+          }
+        } ],
         "action" : {
           "type" : "navigate",
           "screenId" : "item-detail",

@@ -1,12 +1,16 @@
-import type { Screen } from '../schema/types';
-
 export interface RecordedCall {
   method: string;
   url: URL;
   headers: Record<string, string>;
 }
 
-type Route = (call: RecordedCall) => { status?: number; body: unknown } | undefined;
+interface MockResponse {
+  status?: number;
+  body: unknown;
+  headers?: Record<string, string>;
+}
+
+type Route = (call: RecordedCall) => MockResponse | undefined;
 
 /**
  * Replaces global fetch with a tiny router so page-level tests can exercise
@@ -21,14 +25,19 @@ export function mockServer(route: Route) {
       headers: (init.headers ?? {}) as Record<string, string>,
     };
     calls.push(call);
-    const result = route(call) ?? { status: 404, body: { detail: `No mock for ${call.method} ${call.url.pathname}` } };
+    const result: MockResponse = route(call) ?? {
+      status: 404,
+      body: { detail: `No mock for ${call.method} ${call.url.pathname}` },
+    };
     const status = result.status ?? 200;
+    const headers = new Map(Object.entries(result.headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]));
     return {
       ok: status >= 200 && status < 300,
       status,
       statusText: String(status),
+      headers: { get: (name: string) => headers.get(name.toLowerCase()) ?? null },
       json: async () => result.body,
-    } as Response;
+    } as unknown as Response;
   });
   global.fetch = fetchMock as typeof fetch;
   return { calls, fetchMock };
@@ -37,5 +46,3 @@ export function mockServer(route: Route) {
 export function screenCalls(calls: RecordedCall[], screenId: string): RecordedCall[] {
   return calls.filter((call) => call.method === 'GET' && call.url.pathname === `/api/screens/${screenId}`);
 }
-
-export type { Screen };

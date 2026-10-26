@@ -31,7 +31,7 @@ class ScreenValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"gallery.json", "item-detail.json"})
+    @ValueSource(strings = {"gallery-variant-a.json", "gallery-variant-b.json", "gallery-fallback.json", "item-detail.json"})
     void acceptsEverySharedFixture(String fixture) throws JsonProcessingException {
         assertThat(validator.validate(JSON.readTree(Fixtures.read(fixture)))).isEmpty();
     }

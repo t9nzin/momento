@@ -11,16 +11,24 @@ export class ApiError extends Error {
   }
 }
 
+export interface ScreenResponse {
+  screen: Screen;
+  /** The layout variant the server served, from the X-Variant header. */
+  variant: string | null;
+}
+
 export async function fetchScreen(
   screenId: string,
   params: Record<string, string>,
   context: ClientContext,
-): Promise<Screen> {
-  const query = new URLSearchParams(params).toString();
-  const url = `${__API_BASE__}/api/screens/${encodeURIComponent(screenId)}${query ? `?${query}` : ''}`;
+): Promise<ScreenResponse> {
+  const query = new URLSearchParams(params);
+  if (context.variant !== 'auto') query.set('variant', context.variant);
+  const queryString = query.toString();
+  const url = `${__API_BASE__}/api/screens/${encodeURIComponent(screenId)}${queryString ? `?${queryString}` : ''}`;
   const response = await fetch(url, { headers: contextHeaders(context) });
   if (!response.ok) throw await toApiError(response);
-  return (await response.json()) as Screen;
+  return { screen: (await response.json()) as Screen, variant: response.headers.get('X-Variant') };
 }
 
 /** Calls an API path named by a `request` action. */

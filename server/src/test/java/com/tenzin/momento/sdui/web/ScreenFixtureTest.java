@@ -34,13 +34,16 @@ class ScreenFixtureTest {
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiter = '|', textBlock = """
-            gallery.json     | /api/screens/gallery
-            item-detail.json | /api/screens/item-detail?itemId=1
+            gallery-variant-a.json | /api/screens/gallery?variant=A | column,row,text,image,card,grid,list,button,spacer
+            gallery-variant-b.json | /api/screens/gallery?variant=B | column,row,text,image,card,grid,list,button,spacer
+            gallery-fallback.json  | /api/screens/gallery?variant=A | column,row,text,image,list,button,spacer
+            item-detail.json       | /api/screens/item-detail?itemId=1 | column,row,text,image,card,grid,list,button,spacer
             """)
-    void screenMatchesFixture(String fixture, String url) throws Exception {
+    void screenMatchesFixture(String fixture, String url, String supportedComponents) throws Exception {
         var body = mvc.perform(get(url)
                         .header(ClientHeaders.USER_ID, "fixture-user")
-                        .header(ClientHeaders.PLATFORM, "web"))
+                        .header(ClientHeaders.PLATFORM, "web")
+                        .header(ClientHeaders.SUPPORTED_COMPONENTS, supportedComponents))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
 

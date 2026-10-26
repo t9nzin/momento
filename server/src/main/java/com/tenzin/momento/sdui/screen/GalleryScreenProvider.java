@@ -6,8 +6,10 @@ import com.tenzin.momento.sdui.schema.Card;
 import com.tenzin.momento.sdui.schema.Column;
 import com.tenzin.momento.sdui.schema.Component;
 import com.tenzin.momento.sdui.schema.Grid;
+import com.tenzin.momento.sdui.schema.ListView;
 import com.tenzin.momento.sdui.schema.Screen;
 import com.tenzin.momento.sdui.schema.Text;
+import com.tenzin.momento.sdui.variant.Variant;
 
 import java.util.List;
 import java.util.Map;
@@ -31,18 +33,22 @@ public class GalleryScreenProvider implements ScreenProvider {
     @Override
     public Screen build(ScreenRequest request) {
         var title = "My keepsakes";
-        var root = new Column("root", List.of(
+        var header = new Column("header", new Column.Props(4), List.of(
                 new Text("heading", title, "title"),
-                new Text("subheading", "{{count}} things worth keeping", "caption"),
-                itemsGrid()));
+                new Text("subheading", "{{count}} things worth keeping", "caption")), null);
+        var root = new Column("root", new Column.Props(20), List.of(header, items(request.variant())), null);
         Map<String, Object> data = Map.of(
                 "count", items.findAll().size(),
                 "items", items.findAll());
         return new Screen(Screen.CURRENT_SCHEMA_VERSION, SCREEN_ID, title, data, root);
     }
 
-    private static Component itemsGrid() {
-        return new Grid("items", new Grid.Props(2, "items"), itemCard());
+    /** Variant A is a two-column grid; variant B is a single-column list, so images render larger. */
+    private static Component items(Variant variant) {
+        return switch (variant) {
+            case A -> new Grid("items", new Grid.Props(2, "items"), itemCard());
+            case B -> new ListView("items", new ListView.Props("items"), itemCard());
+        };
     }
 
     private static Card itemCard() {

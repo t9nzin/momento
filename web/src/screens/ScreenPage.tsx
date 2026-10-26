@@ -10,15 +10,21 @@ import styles from './ScreenPage.module.css';
 
 interface Props {
   context: ClientContext;
+  /** Told which variant the server served, for the dev panel. */
+  onVariantServed?: (variant: string | null) => void;
 }
 
 /** Route `/screens/:screenId`: fetches the screen named in the URL and renders it. */
-export function ScreenPage({ context }: Props) {
+export function ScreenPage({ context, onVariantServed }: Props) {
   const { screenId = 'gallery' } = useParams();
   const [searchParams] = useSearchParams();
   const params = useMemo(() => Object.fromEntries(searchParams), [searchParams]);
   const navigate = useNavigate();
-  const { status, screen, error, refresh } = useScreen(screenId, params, context);
+  const { status, screen, variant, error, refresh } = useScreen(screenId, params, context);
+
+  useEffect(() => {
+    onVariantServed?.(variant);
+  }, [variant, onVariantServed]);
 
   const dispatch = useMemo(() => {
     const handle = createActionHandler({

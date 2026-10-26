@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { loadFixture } from '../test/fixtures';
-import type { Action, ComponentNode } from '../schema/types';
+import { COMPONENT_TYPES, type Action, type ComponentNode } from '../schema/types';
 import { ActionProvider } from './ActionContext';
 import { ComponentRenderer } from './ComponentRenderer';
 
@@ -19,9 +19,23 @@ function renderedTypes(container: HTMLElement): Set<string> {
   return new Set(Array.from(nodes, (node) => node.getAttribute('data-sdui-type')!));
 }
 
+const FIXTURES = ['gallery-variant-a.json', 'gallery-variant-b.json', 'gallery-fallback.json', 'item-detail.json'];
+
 describe('ComponentRenderer with shared fixtures', () => {
-  it('renders the gallery: one card per item with bound titles', () => {
-    const gallery = loadFixture('gallery.json');
+  it('renders every component type in the schema across the fixtures, with no unknowns', () => {
+    const seen = new Set<string>();
+    for (const name of FIXTURES) {
+      const fixture = loadFixture(name);
+      const { container, unmount } = renderNode(fixture.root, fixture.data);
+      renderedTypes(container).forEach((type) => seen.add(type));
+      unmount();
+    }
+
+    expect([...seen].sort()).toEqual([...COMPONENT_TYPES].sort());
+  });
+
+  it('renders the gallery grid variant: one card per item with bound titles', () => {
+    const gallery = loadFixture('gallery-variant-a.json');
     const { container } = renderNode(gallery.root, gallery.data);
 
     expect(screen.getByRole('heading', { name: 'My keepsakes' })).toBeInTheDocument();
@@ -29,6 +43,22 @@ describe('ComponentRenderer with shared fixtures', () => {
     expect(container.querySelectorAll('[data-sdui-type="card"]')).toHaveLength(8);
     expect(screen.getByRole('button', { name: /Ticket stub\s*2016/ })).toBeInTheDocument();
     expect(renderedTypes(container)).toEqual(new Set(['column', 'text', 'grid', 'card']));
+  });
+
+  it('renders the gallery list variant as list items', () => {
+    const gallery = loadFixture('gallery-variant-b.json');
+    renderNode(gallery.root, gallery.data);
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
+  });
+
+  it('renders the capability-fallback gallery as tappable columns of image and text', async () => {
+    const gallery = loadFixture('gallery-fallback.json');
+    const { container, dispatch } = renderNode(gallery.root, gallery.data);
+
+    expect(container.querySelector('[data-sdui-type="card"], [data-sdui-type="grid"]')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Seashell/ }));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'navigate', screenId: 'item-detail', params: { itemId: '3' } });
   });
 
   it('renders item detail with an image, spacer, row and buttons', () => {

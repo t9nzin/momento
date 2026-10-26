@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchScreen } from '../api/client';
+import { fetchScreen, type ScreenResponse } from '../api/client';
 import type { ClientContext } from '../api/clientContext';
-import type { Screen } from '../schema/types';
 
 type State =
-  | { status: 'loading'; screen?: undefined; error?: undefined }
-  | { status: 'ready'; screen: Screen; error?: undefined }
-  | { status: 'error'; screen?: Screen; error: Error };
+  | { status: 'loading'; response?: undefined; error?: undefined }
+  | { status: 'ready'; response: ScreenResponse; error?: undefined }
+  | { status: 'error'; response?: ScreenResponse; error: Error };
 
 /**
  * Fetches a screen and re-fetches when its inputs change or `refresh` is
@@ -22,13 +21,19 @@ export function useScreen(screenId: string, params: Record<string, string>, cont
     let cancelled = false;
     const requestParams = Object.fromEntries(new URLSearchParams(paramsKey));
     fetchScreen(screenId, requestParams, context)
-      .then((screen) => !cancelled && setState({ status: 'ready', screen }))
-      .catch((error: Error) => !cancelled && setState((prev) => ({ status: 'error', screen: prev.screen, error })));
+      .then((response) => !cancelled && setState({ status: 'ready', response }))
+      .catch((error: Error) => !cancelled && setState((prev) => ({ status: 'error', response: prev.response, error })));
     return () => {
       cancelled = true;
     };
   }, [screenId, paramsKey, context, refreshCount]);
 
   const refresh = useCallback(() => setRefreshCount((count) => count + 1), []);
-  return { ...state, refresh };
+  return {
+    status: state.status,
+    screen: state.response?.screen,
+    variant: state.response?.variant ?? null,
+    error: state.error,
+    refresh,
+  };
 }
