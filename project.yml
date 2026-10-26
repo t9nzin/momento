@@ -7,12 +7,17 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
+packages:
+  MomentoSDUI:
+    path: ios
 targets:
   Momento:
     type: application
     platform: iOS
     sources:
       - path: Momento
+    dependencies:
+      - package: MomentoSDUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tenzin.momento
@@ -32,6 +37,9 @@ schemes:
         Momento: all
     run:
       config: Debug
+      commandLineArguments:
+        # Tick in the scheme editor to launch into the server-driven gallery.
+        "-SDUIGallery YES": false
     archive:
       config: Release
     analyze:

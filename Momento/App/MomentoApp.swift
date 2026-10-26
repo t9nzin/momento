@@ -17,9 +17,18 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
-        TrayEditor()
+        content
             .task {
                 FolderSeed.seedIfNeeded(context: modelContext)
             }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if SDUIConfig.launchIntoGallery {
+            ServerGalleryView()
+        } else {
+            TrayEditor()
+        }
     }
 }

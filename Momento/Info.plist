@@ -20,6 +20,13 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>SDUIBaseURL</key>
+    <string>http://localhost:8080</string>
     <key>NSCameraUsageDescription</key>
     <string>Momento uses the camera so you can scan and collect mementos from the world around you.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
