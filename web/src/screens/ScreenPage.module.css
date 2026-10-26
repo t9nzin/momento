@@ -1,0 +1,14 @@
+.status {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  color: var(--warning-ink);
+  background: var(--warning-surface);
+  border-radius: 8px;
+}

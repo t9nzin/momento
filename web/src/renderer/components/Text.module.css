@@ -1,0 +1,26 @@
+.text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.headline {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.body {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.caption {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}

@@ -3,6 +3,7 @@
   "screenId" : "gallery",
   "title" : "My keepsakes",
   "data" : {
+    "count" : 8,
     "items" : [ {
       "id" : "1",
       "title" : "Ticket stub",
@@ -59,8 +60,7 @@
       "imageUrl" : "https://picsum.photos/seed/train-ticket/600/600",
       "year" : 2022,
       "favorite" : false
-    } ],
-    "count" : 8
+    } ]
   },
   "root" : {
     "type" : "column",

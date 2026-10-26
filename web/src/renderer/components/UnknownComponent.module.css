@@ -1,0 +1,9 @@
+.unknown {
+  padding: 8px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--warning-ink);
+  background: var(--warning-surface);
+  border: 1px dashed var(--warning-ink);
+  border-radius: 6px;
+}

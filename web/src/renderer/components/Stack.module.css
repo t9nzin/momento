@@ -1,0 +1,28 @@
+.column,
+.row {
+  display: flex;
+  gap: calc(var(--spacing, 0) * 1px);
+  min-width: 0;
+}
+
+.column {
+  flex-direction: column;
+}
+
+.row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Reset <button> styling when a stack is tappable. */
+button.column,
+button.row {
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}

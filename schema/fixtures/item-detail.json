@@ -63,7 +63,7 @@
         "type" : "button",
         "id" : "favorite",
         "props" : {
-          "label" : "â¥ Favourite",
+          "label" : "♥ Favourite",
           "style" : "primary"
         },
         "action" : {
